@@ -171,6 +171,101 @@ public interface CatalogService {
 Bu model daha object-oriented olabilir; ancak consumer tarafında serialization ve object graph maliyeti
 oluşturur.
 
+### Provider Return Type Seçimleri ve Overhead
+
+Provider `record`, class DTO, `String` veya `byte[]` dönebilir. Doğru seçim consumer'ın bu değerle ne
+yapacağına göre verilmelidir.
+
+| Provider dönüş tipi | En uygun use case | Consumer maliyeti |
+|---------------------|-------------------|-------------------|
+| UTF-8 JSON taşıyan `byte[]` | Consumer cevabı HTTP JSON olarak forward eder. | En düşük. Consumer `RawResponse.json(bytes)` kullanır, ikinci DTO graph kurmaz. |
+| `record` DTO | Consumer typed data ile filtreleme, validation, enrichment veya business karar yapar. | Hessian2 decode Java object graph oluşturur; HTTP response tekrar JSON serialize edebilir. |
+| Plain class DTO | Legacy framework veya serializer record desteklemiyorsa. | Record'a benzer, genelde daha mutable ve daha az explicit. |
+| JSON `String` | Küçük/basit payload ve okunabilirlik byte kontrolünden önemliyse. | String allocation ve sonradan UTF-8 encoding. Hot path için `byte[]` daha doğru. |
+| Büyük nested object graph | Consumer gerçekten tüm object model'e ihtiyaç duyuyorsa. | En yüksek heap, GC, p99 latency ve RSS riski. |
+
+Bu sample'da `byte[]` bilinçli tercihtir. REST consumer catalog yapısını anlamak zorunda değildir;
+provider cevabını HTTP üzerinden dışarı açması yeterlidir.
+
+### Bu Provider Direkt Record Döndürebilir mi?
+
+Evet, iki taraf da aynı API contract jar'ını kullanıyorsa:
+
+```java
+public record CatalogItem(String sku, String name) {}
+
+public record CatalogResponse(String source, List<CatalogItem> items) {}
+
+public interface CatalogService {
+    CatalogResponse getCatalog();
+}
+```
+
+Provider implementasyonu:
+
+```java
+public final class CatalogServiceImpl implements CatalogService {
+    @Override
+    public CatalogResponse getCatalog() {
+        return new CatalogResponse(
+                "rest-sample-dubbo-provider",
+                List.of(new CatalogItem("sku-1", "Demo Item")));
+    }
+}
+```
+
+Consumer kullanımı:
+
+```java
+NativeDubboMethodInvoker<CatalogResponse> invoker =
+        client.method(spec, "getCatalog", CatalogResponse.class);
+```
+
+Bu geçerli bir object contract'tır, fakat wire path yine Hessian2 serialization kullanır:
+
+```text
+CatalogResponse record
+  -> provider tarafında Hessian2 serialize
+  -> Dubbo TCP frame
+  -> consumer tarafında Rust native transport
+  -> Java Hessian2 decode
+  -> yeni CatalogResponse record instance
+```
+
+Bu ortamda Hessian Lite 4.0.3 basit Java 21 record'ları işleyebiliyor. Bunu sadece minimum smoke
+sinyali olarak kabul edin. Gerçek production contract için nested record, list, map, enum, tarih,
+null ve version değişimi içeren contract test yazılmalıdır.
+
+### Provider Tarafı Karar Örnekleri
+
+Read-heavy endpoint için hazır JSON kullanın:
+
+```java
+public byte[] getCatalogJson() {
+    return catalogJsonWriter.writeAsUtf8Bytes();
+}
+```
+
+Consumer business karar verecekse record kullanın:
+
+```java
+public CatalogResponse getCatalog() {
+    return catalogRepository.loadCatalogResponse();
+}
+```
+
+Hot path için bundan kaçının:
+
+```java
+public CatalogResponse getCatalogOnlyToBeConvertedBackToJson() {
+    return catalogRepository.loadLargeCatalog();
+}
+```
+
+REST consumer bu objeyi hemen tekrar JSON'a çeviriyorsa sistem Hessian object materialization ve JSON
+serialization maliyetini boşuna ödemiş olur. Bu durumda provider UTF-8 JSON bytes dönmeli veya
+streaming response tasarlanmalıdır.
+
 ## Bağımlılıklar
 
 Provider process gerçek Dubbo server olduğu için consumer kadar küçük değildir. Dependency seti açık

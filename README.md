@@ -169,6 +169,101 @@ public interface CatalogService {
 
 That model is more object-oriented, but it adds serialization and object graph cost for the consumer.
 
+### Provider Return Type Choices and Overhead
+
+The provider can return a record, a class DTO, a `String`, or `byte[]`. The right choice depends on
+what the consumer will do with the value.
+
+| Provider return type | Best use case | Consumer cost |
+|----------------------|---------------|---------------|
+| `byte[]` containing UTF-8 JSON | Consumer forwards the response as HTTP JSON. | Lowest. Consumer uses `RawResponse.json(bytes)` and does not build another DTO graph. |
+| `record` DTO | Consumer needs typed data for filtering, validation, enrichment, or branching. | Hessian2 decode creates a Java object graph; HTTP response may serialize it again. |
+| Plain class DTO | Needed for legacy frameworks or serializers that cannot handle records. | Similar to record, usually more mutable and less explicit. |
+| `String` JSON | Small/simple payloads where readability is preferred over strict byte control. | String allocation and later UTF-8 encoding. Prefer `byte[]` for hot paths. |
+| Large nested object graph | Only when the consumer truly needs the full object model. | Highest heap, GC, p99 latency, and RSS risk. |
+
+For this sample, `byte[]` is intentional because the REST consumer does not need to understand the
+catalog structure. It only needs to expose the provider response over HTTP.
+
+### Can This Provider Return a Record Directly?
+
+Yes, if both sides use the same API contract jar:
+
+```java
+public record CatalogItem(String sku, String name) {}
+
+public record CatalogResponse(String source, List<CatalogItem> items) {}
+
+public interface CatalogService {
+    CatalogResponse getCatalog();
+}
+```
+
+Provider implementation:
+
+```java
+public final class CatalogServiceImpl implements CatalogService {
+    @Override
+    public CatalogResponse getCatalog() {
+        return new CatalogResponse(
+                "rest-sample-dubbo-provider",
+                List.of(new CatalogItem("sku-1", "Demo Item")));
+    }
+}
+```
+
+Consumer usage:
+
+```java
+NativeDubboMethodInvoker<CatalogResponse> invoker =
+        client.method(spec, "getCatalog", CatalogResponse.class);
+```
+
+This is a valid object contract, but the wire path is still Hessian2 serialization:
+
+```text
+CatalogResponse record
+  -> Hessian2 serialize on provider
+  -> Dubbo TCP frame
+  -> Rust native transport on consumer side
+  -> Java Hessian2 decode
+  -> new CatalogResponse record instance
+```
+
+Hessian Lite 4.0.3 can handle simple Java 21 records in this project environment. Treat that as a
+minimum smoke signal, not a substitute for a real compatibility test. Add a contract test for every
+record shape that matters: nested records, lists, maps, enums, dates, nulls, and versioned fields.
+
+### Provider-Side Decision Examples
+
+Use ready JSON for read-heavy endpoints:
+
+```java
+public byte[] getCatalogJson() {
+    return catalogJsonWriter.writeAsUtf8Bytes();
+}
+```
+
+Use records when the consumer must own business decisions:
+
+```java
+public CatalogResponse getCatalog() {
+    return catalogRepository.loadCatalogResponse();
+}
+```
+
+Avoid this for hot paths:
+
+```java
+public CatalogResponse getCatalogOnlyToBeConvertedBackToJson() {
+    return catalogRepository.loadLargeCatalog();
+}
+```
+
+If the REST consumer immediately converts that object back to JSON, the system paid for Hessian
+object materialization and JSON serialization without gaining business value. In that case, return
+UTF-8 JSON bytes from the provider or design a streaming response.
+
 ## Dependencies
 
 Provider process is heavier than the consumer because it is a real Dubbo server. The dependency set is
