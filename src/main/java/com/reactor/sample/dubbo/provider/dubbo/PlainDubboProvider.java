@@ -36,6 +36,34 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
             T service,
             ProviderConfig config
     ) throws Exception {
+        ZookeeperProviderRegistration registration = ZookeeperProviderRegistration.open(
+                config.registryAddress(),
+                config.registryRoot()
+        );
+        try {
+            return export(serviceType, service, config, registration, true);
+        } catch (Exception e) {
+            registration.close();
+            throw e;
+        }
+    }
+
+    public static <T> PlainDubboProvider<T> export(
+            Class<T> serviceType,
+            T service,
+            ProviderConfig config,
+            ZookeeperProviderRegistration sharedRegistration
+    ) throws Exception {
+        return export(serviceType, service, config, sharedRegistration, false);
+    }
+
+    private static <T> PlainDubboProvider<T> export(
+            Class<T> serviceType,
+            T service,
+            ProviderConfig config,
+            ZookeeperProviderRegistration registration,
+            boolean closeRegistration
+    ) throws Exception {
         URL exportUrl = providerUrl(serviceType, config);
         registerServiceModel(serviceType, service, exportUrl);
         registerPermittedSerialization(exportUrl);
@@ -45,13 +73,13 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
         Protocol protocol = loader.getExtension("dubbo", false);
         Exporter<T> exporter = protocol.export(invoker);
 
-        AutoCloseable registration = ZookeeperProviderRegistration.register(
-                config.registryAddress(),
-                config.registryRoot(),
-                serviceType,
-                exportUrl
-        );
-        return new PlainDubboProvider<>(exporter, registration);
+        try {
+            registration.register(serviceType, exportUrl);
+            return new PlainDubboProvider<>(exporter, closeRegistration ? registration : null);
+        } catch (Exception e) {
+            exporter.unexport();
+            throw e;
+        }
     }
 
     public URL url() {
@@ -61,7 +89,9 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
     @Override
     public void close() {
         try {
-            registration.close();
+            if (registration != null) {
+                registration.close();
+            }
         } catch (Exception ignored) {
             // Session close removes the ephemeral node; explicit delete is best effort.
         } finally {

@@ -13,6 +13,7 @@ without bringing Spring Boot or Dubbo Spring Boot starter into the sample.
 Use this sample when you want to understand:
 
 - How to expose a classic `dubbo://` provider in plain Java.
+- How to export more than one Dubbo interface from the same small provider process.
 - How to register provider URLs in ZooKeeper.
 - How to keep provider dependencies explicit and limited.
 - How to return JSON bytes from a provider for low-overhead HTTP forwarding by a Rust-Java consumer.
@@ -40,10 +41,11 @@ rest-sample-dubbo-consumer
   -> JSON byte[]
 ```
 
-The provider registers under ZooKeeper:
+The provider registers each interface under its own ZooKeeper path:
 
 ```text
 /dubbo/com.reactor.rust.dubbo.sample.NestedCatalogService/providers
+/dubbo/com.reactor.rust.dubbo.sample.CustomerQueryService/providers
 ```
 
 ## Architecture
@@ -52,22 +54,38 @@ The provider registers under ZooKeeper:
 Dubbo consumer
   -> ZooKeeper provider URL or static host:port
   -> PlainDubboProvider
-  -> NestedCatalogServiceImpl
-  -> optional PostgresCustomerRepository
+  -> selected service implementation
   -> JSON byte[]
 ```
 
-The provider intentionally returns JSON bytes:
+The provider intentionally exposes two small interfaces instead of one large RPC surface:
 
 ```java
 public interface NestedCatalogService {
     byte[] getNestedCatalogJson();
+}
+
+public interface CustomerQueryService {
     byte[] getDatabaseCustomersJson();
 }
 ```
 
 The consumer can forward those bytes through `RawResponse.json(...)` without building another DTO
 graph.
+
+Interface split:
+
+| Interface | Implementation | Responsibility |
+|-----------|----------------|----------------|
+| `NestedCatalogService` | `NestedCatalogServiceImpl` | Static nested catalog JSON. |
+| `CustomerQueryService` | `CustomerQueryServiceImpl` | PostgreSQL-backed customer JSON through HikariCP/ActiveJDBC. |
+
+BEST: keep interfaces cohesive and small. ACCEPTABLE: one provider process can export multiple
+interfaces on the same Dubbo port for a sample or a tightly related bounded context. ANTI-PATTERN:
+put unrelated read/write operations into one god interface because it is easier to wire.
+
+The provider uses one ZooKeeper session to register both interface nodes. Opening one ZooKeeper
+client per exported interface would work, but it is unnecessary thread/session overhead.
 
 ## Package Structure
 
@@ -91,13 +109,13 @@ com.reactor.sample.dubbo.provider.registry
   ZooKeeper provider registration.
 
 com.reactor.rust.dubbo.sample
-  Shared Dubbo interface example. In production, move this to a shared API jar.
+  Shared Dubbo interface examples. In production, move these to a shared API jar.
 ```
 
 Main class:
 
 ```text
-com.reactor.sample.dubbo.provider.app.NestedCatalogProviderApplication
+com.reactor.sample.dubbo.provider.app.RestSampleDubboProviderApplication
 ```
 
 ## DTO, Runtime Class, and Response Model
@@ -114,13 +132,14 @@ The classes in this provider are not HTTP JSON DTOs:
 
 | Type | Role | JSON DTO? |
 |------|------|-----------|
-| `NestedCatalogProviderApplication` | Process bootstrap and shutdown hook. | No |
+| `RestSampleDubboProviderApplication` | Process bootstrap and shutdown hook. | No |
 | `ProviderProperties` | Reads and validates runtime properties. | No |
 | `ProviderRuntimeTuning` | Applies Dubbo/Netty startup tuning. | No |
 | `PlainDubboProvider` | Exports Dubbo protocol and owns exporter lifecycle. | No |
 | `ZookeeperProviderRegistration` | Owns ZooKeeper session and ephemeral node lifecycle. | No |
 | `PostgresCustomerRepository` | Owns DB access behavior and pool usage. | No |
 | `NestedCatalogServiceImpl` | Dubbo business service implementation. | No |
+| `CustomerQueryServiceImpl` | DB-backed Dubbo business service implementation. | No |
 | `SampleCustomer` | Immutable DB row model. | Yes, record is correct. |
 
 ### Use Case: DB Row Model
@@ -361,7 +380,8 @@ Expected startup output:
 
 ```text
 [rest-sample-dubbo-provider] database warmup completed
-[rest-sample-dubbo-provider] exported dubbo://127.0.0.1:20880/...
+[rest-sample-dubbo-provider] exported dubbo://127.0.0.1:20880/com.reactor.rust.dubbo.sample.NestedCatalogService...
+[rest-sample-dubbo-provider] exported dubbo://127.0.0.1:20880/com.reactor.rust.dubbo.sample.CustomerQueryService...
 [rest-sample-dubbo-provider] registered at zookeeper://127.0.0.1:2181/dubbo
 ```
 
@@ -379,6 +399,7 @@ Call through the REST consumer:
 
 ```powershell
 curl http://127.0.0.1:8080/api/v1/catalog/nested
+curl http://127.0.0.1:8080/api/v1/customers/db
 curl http://127.0.0.1:8080/api/v1/catalog/db/customers
 ```
 
@@ -425,7 +446,7 @@ and consumer concurrency can worsen tail latency.
 
 ## Production Notes
 
-- Move `NestedCatalogService` to a shared API jar before real use.
+- Move `NestedCatalogService` and `CustomerQueryService` to a shared API jar before real use.
 - Keep runtime properties explicit.
 - Use records for domain DTO contracts.
 - Use classes for lifecycle/resource owners.

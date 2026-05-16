@@ -9,25 +9,23 @@ import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooKeeper;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 public final class ZookeeperProviderRegistration implements AutoCloseable {
 
     private final ZooKeeper zookeeper;
-    private final String nodePath;
+    private final String registryRoot;
+    private final List<String> nodePaths = new ArrayList<>();
 
-    private ZookeeperProviderRegistration(ZooKeeper zookeeper, String nodePath) {
+    private ZookeeperProviderRegistration(ZooKeeper zookeeper, String registryRoot) {
         this.zookeeper = zookeeper;
-        this.nodePath = nodePath;
+        this.registryRoot = registryRoot;
     }
 
-    public static ZookeeperProviderRegistration register(
-            String registryAddress,
-            String registryRoot,
-            Class<?> serviceType,
-            URL providerUrl
-    ) throws Exception {
+    public static ZookeeperProviderRegistration open(String registryAddress, String registryRoot) throws Exception {
         CountDownLatch connected = new CountDownLatch(1);
         ZooKeeper zk = new ZooKeeper(
                 zookeeperConnectString(registryAddress),
@@ -40,25 +38,45 @@ public final class ZookeeperProviderRegistration implements AutoCloseable {
         }
 
         String root = normalizeRoot(registryRoot);
-        String servicePath = "/" + root + "/" + URL.encode(serviceType.getName());
-        String providersPath = servicePath + "/providers";
         ensurePersistent(zk, "/" + root);
-        ensurePersistent(zk, servicePath);
-        ensurePersistent(zk, providersPath);
+        return new ZookeeperProviderRegistration(zk, root);
+    }
+
+    public static ZookeeperProviderRegistration register(
+            String registryAddress,
+            String registryRoot,
+            Class<?> serviceType,
+            URL providerUrl
+    ) throws Exception {
+        ZookeeperProviderRegistration registration = open(registryAddress, registryRoot);
+        registration.register(serviceType, providerUrl);
+        return registration;
+    }
+
+    public synchronized void register(Class<?> serviceType, URL providerUrl) throws Exception {
+        String servicePath = "/" + registryRoot + "/" + URL.encode(serviceType.getName());
+        String providersPath = servicePath + "/providers";
+        ensurePersistent(zookeeper, servicePath);
+        ensurePersistent(zookeeper, providersPath);
 
         String nodePath = providersPath + "/" + URL.encode(providerUrl.toFullString());
-        recreateEphemeral(zk, nodePath);
-        return new ZookeeperProviderRegistration(zk, nodePath);
+        recreateEphemeral(zookeeper, nodePath);
+        nodePaths.add(nodePath);
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
         try {
-            if (zookeeper.exists(nodePath, false) != null) {
-                zookeeper.delete(nodePath, -1);
+            for (int i = nodePaths.size() - 1; i >= 0; i--) {
+                String nodePath = nodePaths.get(i);
+                try {
+                    if (zookeeper.exists(nodePath, false) != null) {
+                        zookeeper.delete(nodePath, -1);
+                    }
+                } catch (Exception ignored) {
+                    // Best effort cleanup. Session close also removes ephemeral nodes.
+                }
             }
-        } catch (Exception ignored) {
-            // Best effort cleanup. Session close also removes the ephemeral node.
         } finally {
             try {
                 zookeeper.close();
