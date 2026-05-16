@@ -10,6 +10,9 @@ import com.reactor.sample.dubbo.provider.registry.ZookeeperProviderRegistration;
 import com.reactor.sample.dubbo.provider.service.CustomerQueryServiceImpl;
 import com.reactor.sample.dubbo.provider.service.NestedCatalogServiceImpl;
 
+import java.lang.reflect.Method;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 
 public final class RestSampleDubboProviderApplication {
@@ -83,9 +86,9 @@ public final class RestSampleDubboProviderApplication {
         System.out.println("[rest-sample-dubbo-provider] exported " + catalogProvider.url().toFullString());
         System.out.println("[rest-sample-dubbo-provider] exported " + customerProvider.url().toFullString());
         System.out.println("[rest-sample-dubbo-provider] execution limits "
-                + NestedCatalogService.class.getSimpleName() + "=" + catalogExecution.maxConcurrentInvocations()
-                + ", " + CustomerQueryService.class.getSimpleName() + "="
-                + customerExecution.maxConcurrentInvocations());
+                + formatExecution(NestedCatalogService.class, catalogExecution)
+                + ", "
+                + formatExecution(CustomerQueryService.class, customerExecution));
         System.out.println("[rest-sample-dubbo-provider] registered at "
                 + config.registryAddress() + "/" + config.registryRoot());
         stop.await();
@@ -100,7 +103,56 @@ public final class RestSampleDubboProviderApplication {
                         defaultMax
                 )
         );
-        return PlainDubboProvider.ServiceExecutionConfig.bounded(max);
+        return PlainDubboProvider.ServiceExecutionConfig.bounded(max, methodExecutionOverrides(serviceType));
+    }
+
+    private static Map<String, Integer> methodExecutionOverrides(Class<?> serviceType) {
+        Map<String, Integer> overrides = new LinkedHashMap<>();
+        for (Method method : serviceType.getMethods()) {
+            if (method.getDeclaringClass() == Object.class) {
+                continue;
+            }
+            Integer max = methodMaxConcurrent(serviceType, method.getName());
+            if (max != null) {
+                overrides.put(method.getName(), max);
+            }
+        }
+        return overrides;
+    }
+
+    private static Integer methodMaxConcurrent(Class<?> serviceType, String methodName) {
+        String fqcnKey = "dubbo.provider.service." + serviceType.getName()
+                + ".method." + methodName + ".max-concurrent";
+        String simpleKey = "dubbo.provider.service." + serviceType.getSimpleName()
+                + ".method." + methodName + ".max-concurrent";
+        String value = ProviderProperties.getOrDefault(
+                fqcnKey,
+                ProviderProperties.getOrDefault(simpleKey, "")
+        );
+        if (value.isBlank()) {
+            return null;
+        }
+        return parsePositiveInt(fqcnKey + " / " + simpleKey, value);
+    }
+
+    private static int parsePositiveInt(String key, String value) {
+        try {
+            int parsed = Integer.parseInt(value);
+            if (parsed < 1) {
+                throw new IllegalArgumentException("Provider property must be >= 1: " + key + "=" + value);
+            }
+            return parsed;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Provider property must be an integer: " + key + "=" + value, e);
+        }
+    }
+
+    private static String formatExecution(Class<?> serviceType, PlainDubboProvider.ServiceExecutionConfig config) {
+        String value = serviceType.getSimpleName() + "=" + config.maxConcurrentInvocations();
+        if (config.hasMethodOverrides()) {
+            value += " methods=" + config.methodMaxConcurrentInvocations();
+        }
+        return value;
     }
 
     private static void closeQuietly(AutoCloseable closeable) {

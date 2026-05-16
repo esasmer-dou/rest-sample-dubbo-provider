@@ -15,6 +15,7 @@ import org.apache.dubbo.rpc.proxy.AbstractProxyInvoker;
 import java.lang.management.ManagementFactory;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.TreeSet;
@@ -142,6 +143,11 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
         if (executionConfig.isBounded()) {
             parameters.put("executes", Integer.toString(executionConfig.maxConcurrentInvocations()));
             parameters.put("sample.max-concurrent", Integer.toString(executionConfig.maxConcurrentInvocations()));
+            if (!executionConfig.methodMaxConcurrentInvocations().isEmpty()) {
+                parameters.put(
+                        "sample.method-max-concurrent",
+                        methodLimitMetadata(executionConfig.methodMaxConcurrentInvocations()));
+            }
         }
 
         return new URL("dubbo", config.host(), config.port(), serviceType.getName(), parameters)
@@ -182,6 +188,14 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
         return at > 0 ? name.substring(0, at) : name;
     }
 
+    private static String methodLimitMetadata(Map<String, Integer> methodLimits) {
+        TreeSet<String> entries = new TreeSet<>();
+        for (Map.Entry<String, Integer> entry : methodLimits.entrySet()) {
+            entries.add(entry.getKey() + ":" + entry.getValue());
+        }
+        return String.join(",", entries);
+    }
+
     private static final class ReflectiveInvoker<T> extends AbstractProxyInvoker<T> {
 
         private final ServiceConcurrencyGate concurrencyGate;
@@ -194,14 +208,14 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
         @Override
         protected Object doInvoke(T proxy, String methodName, Class<?>[] parameterTypes, Object[] arguments)
                 throws Throwable {
-            concurrencyGate.acquireOrReject(methodName);
+            InvocationPermit permit = concurrencyGate.acquireOrReject(methodName);
             try {
                 Method method = proxy.getClass().getMethod(methodName, parameterTypes);
                 return method.invoke(proxy, arguments);
             } catch (InvocationTargetException e) {
                 throw e.getTargetException();
             } finally {
-                concurrencyGate.release();
+                permit.release();
             }
         }
     }
@@ -210,35 +224,75 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
 
         private final String serviceName;
         private final int maxConcurrentInvocations;
-        private final Semaphore semaphore;
+        private final Semaphore serviceSemaphore;
+        private final Map<String, MethodGate> methodGates;
 
         private ServiceConcurrencyGate(Class<?> serviceType, ServiceExecutionConfig executionConfig) {
             this.serviceName = serviceType.getName();
             this.maxConcurrentInvocations = executionConfig.maxConcurrentInvocations();
-            this.semaphore = executionConfig.isBounded()
+            this.serviceSemaphore = executionConfig.isBounded()
                     ? new Semaphore(executionConfig.maxConcurrentInvocations(), false)
                     : null;
+            this.methodGates = methodGates(executionConfig.methodMaxConcurrentInvocations());
         }
 
         static ServiceConcurrencyGate forService(Class<?> serviceType, ServiceExecutionConfig executionConfig) {
             return new ServiceConcurrencyGate(serviceType, executionConfig);
         }
 
-        void acquireOrReject(String methodName) {
-            if (semaphore == null) {
-                return;
+        InvocationPermit acquireOrReject(String methodName) {
+            MethodGate methodGate = methodGates.get(methodName);
+            if (methodGate != null) {
+                return methodGate.acquireOrReject(serviceName, methodName);
             }
-            if (!semaphore.tryAcquire()) {
+            if (serviceSemaphore == null) {
+                return InvocationPermit.NOOP;
+            }
+            if (!serviceSemaphore.tryAcquire()) {
                 throw new RejectedExecutionException("Dubbo provider concurrency limit exceeded for "
                         + serviceName + "." + methodName
                         + " maxConcurrent=" + maxConcurrentInvocations);
             }
+            return serviceSemaphore::release;
         }
 
-        void release() {
-            if (semaphore != null) {
-                semaphore.release();
+        private static Map<String, MethodGate> methodGates(Map<String, Integer> methodLimits) {
+            if (methodLimits.isEmpty()) {
+                return Map.of();
             }
+            Map<String, MethodGate> gates = new LinkedHashMap<>(methodLimits.size());
+            for (Map.Entry<String, Integer> entry : methodLimits.entrySet()) {
+                gates.put(entry.getKey(), new MethodGate(entry.getValue()));
+            }
+            return Collections.unmodifiableMap(gates);
+        }
+    }
+
+    @FunctionalInterface
+    private interface InvocationPermit {
+
+        InvocationPermit NOOP = () -> {};
+
+        void release();
+    }
+
+    private static final class MethodGate {
+
+        private final int maxConcurrentInvocations;
+        private final Semaphore semaphore;
+
+        private MethodGate(int maxConcurrentInvocations) {
+            this.maxConcurrentInvocations = maxConcurrentInvocations;
+            this.semaphore = new Semaphore(maxConcurrentInvocations, false);
+        }
+
+        InvocationPermit acquireOrReject(String serviceName, String methodName) {
+            if (!semaphore.tryAcquire()) {
+                throw new RejectedExecutionException("Dubbo provider method concurrency limit exceeded for "
+                        + serviceName + "." + methodName
+                        + " maxConcurrent=" + maxConcurrentInvocations);
+            }
+            return semaphore::release;
         }
     }
 
@@ -250,20 +304,44 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
             String bindHost,
             int port) {}
 
-    public record ServiceExecutionConfig(int maxConcurrentInvocations) {
+    public record ServiceExecutionConfig(
+            int maxConcurrentInvocations,
+            Map<String, Integer> methodMaxConcurrentInvocations) {
 
         public ServiceExecutionConfig {
             if (maxConcurrentInvocations < 1) {
                 throw new IllegalArgumentException("maxConcurrentInvocations must be >= 1");
             }
+            methodMaxConcurrentInvocations = methodMaxConcurrentInvocations == null
+                    ? Map.of()
+                    : Map.copyOf(methodMaxConcurrentInvocations);
+            for (Map.Entry<String, Integer> entry : methodMaxConcurrentInvocations.entrySet()) {
+                if (entry.getKey() == null || entry.getKey().isBlank()) {
+                    throw new IllegalArgumentException("method limit name must not be blank");
+                }
+                if (entry.getValue() == null || entry.getValue() < 1) {
+                    throw new IllegalArgumentException("method maxConcurrentInvocations must be >= 1 for "
+                            + entry.getKey());
+                }
+            }
         }
 
         public static ServiceExecutionConfig bounded(int maxConcurrentInvocations) {
-            return new ServiceExecutionConfig(maxConcurrentInvocations);
+            return new ServiceExecutionConfig(maxConcurrentInvocations, Map.of());
+        }
+
+        public static ServiceExecutionConfig bounded(
+                int maxConcurrentInvocations,
+                Map<String, Integer> methodMaxConcurrentInvocations) {
+            return new ServiceExecutionConfig(maxConcurrentInvocations, methodMaxConcurrentInvocations);
         }
 
         public static ServiceExecutionConfig unbounded() {
-            return new ServiceExecutionConfig(Integer.MAX_VALUE);
+            return new ServiceExecutionConfig(Integer.MAX_VALUE, Map.of());
+        }
+
+        public boolean hasMethodOverrides() {
+            return !methodMaxConcurrentInvocations.isEmpty();
         }
 
         boolean isBounded() {

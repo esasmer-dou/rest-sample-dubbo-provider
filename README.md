@@ -87,19 +87,23 @@ put unrelated read/write operations into one god interface because it is easier 
 The provider uses one ZooKeeper session to register both interface nodes. Opening one ZooKeeper
 client per exported interface would work, but it is unnecessary thread/session overhead.
 
-## Per-Interface Execution Limits
+## Per-Interface and Per-Method Execution Limits
 
-Each exported Dubbo interface has its own execution bulkhead. This answers the production question:
-"How many concurrent service method executions can this interface implementation run?"
+Each exported Dubbo interface has its own execution bulkhead, and individual methods can override
+that interface default. This answers two production questions:
 
-This is intentionally not a new thread pool per interface. A separate executor for every service
-would add thread stack RSS and can hide overload in queues. The sample uses a low-overhead semaphore
-gate in front of the implementation:
+- "How many concurrent service method executions can this interface implementation run by default?"
+- "Does this specific method need a lower or higher limit than the rest of the interface?"
+
+This is intentionally not a new thread pool per interface or method. A separate executor for every
+service/method would add thread stack RSS and can hide overload in queues. The sample uses
+low-overhead semaphore gates in front of the implementation:
 
 ```text
 Dubbo request
   -> PlainDubboProvider ReflectiveInvoker
-  -> per-interface concurrency gate
+  -> method override gate if configured
+  -> otherwise interface default gate
   -> service implementation method
 ```
 
@@ -113,12 +117,26 @@ Default sample limits:
 | All services | `dubbo.provider.service.default.max-concurrent` | `16` | Safe fallback for small sample services. |
 | `NestedCatalogService` | `dubbo.provider.service.NestedCatalogService.max-concurrent` | `16` | CPU/allocation bounded catalog JSON generation. |
 | `CustomerQueryService` | `dubbo.provider.service.CustomerQueryService.max-concurrent` | `2` | Aligned with `sample.db.maximum-pool-size=2` to avoid DB-pool queue buildup. |
+| `CustomerQueryService.getDatabaseCustomersJson` | `dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent` | `1` | Demonstrates method-level override for the DB-backed method. |
 
 You can also use the fully qualified interface name if simple names collide:
 
 ```properties
 dubbo.provider.service.com.reactor.rust.dubbo.sample.CustomerQueryService.max-concurrent=2
+dubbo.provider.service.com.reactor.rust.dubbo.sample.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent=1
 ```
+
+Override behavior:
+
+| Configured value | Runtime behavior |
+|------------------|------------------|
+| No interface key | Uses `dubbo.provider.service.default.max-concurrent`. |
+| Interface key only | All methods on that interface share the interface gate. |
+| Method key exists | That method uses its own method gate instead of the interface default. |
+
+Method override uses the method name. In this sample the interface methods are not overloaded. If you
+introduce overloaded Dubbo methods, keep in mind that methods with the same name share the same
+method gate.
 
 BEST: set the service limit based on the real bottleneck behind that interface. For DB-backed
 services, start at the Hikari max pool size or lower. For CPU-heavy serialization services, start at
@@ -376,6 +394,7 @@ Important properties:
 | `dubbo.provider.service.default.max-concurrent` | Default concurrent invocation limit for exported interfaces. |
 | `dubbo.provider.service.NestedCatalogService.max-concurrent` | Concurrent invocation limit for catalog provider methods. |
 | `dubbo.provider.service.CustomerQueryService.max-concurrent` | Concurrent invocation limit for DB-backed customer provider methods. |
+| `dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent` | Method-level override for the customer DB method. |
 | `sample.db.jdbc-url` | PostgreSQL JDBC URL. |
 | `sample.db.maximum-pool-size` | Hikari maximum pool size. |
 | `sample.db.minimum-idle` | Hikari minimum idle connections. `0` keeps idle RSS lower. |
@@ -423,7 +442,7 @@ Expected startup output:
 [rest-sample-dubbo-provider] database warmup completed
 [rest-sample-dubbo-provider] exported dubbo://127.0.0.1:20880/com.reactor.rust.dubbo.sample.NestedCatalogService...
 [rest-sample-dubbo-provider] exported dubbo://127.0.0.1:20880/com.reactor.rust.dubbo.sample.CustomerQueryService...
-[rest-sample-dubbo-provider] execution limits NestedCatalogService=16, CustomerQueryService=2
+[rest-sample-dubbo-provider] execution limits NestedCatalogService=16, CustomerQueryService=2 methods={getDatabaseCustomersJson=1}
 [rest-sample-dubbo-provider] registered at zookeeper://127.0.0.1:2181/dubbo
 ```
 
