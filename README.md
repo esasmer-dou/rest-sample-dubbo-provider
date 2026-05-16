@@ -1,0 +1,338 @@
+# rest-sample-dubbo-provider
+
+English | [Turkish](README.tr.md)
+
+Minimal plain Java Dubbo provider sample for the Rust-Java REST consumer demo, with ZooKeeper
+registration, PostgreSQL/HikariCP data access, and ready-to-forward JSON responses.
+
+This repository exists so `rest-sample-dubbo-consumer` can be tested against a real Dubbo provider
+without bringing Spring Boot or Dubbo Spring Boot starter into the sample.
+
+## What This Sample Is For
+
+Use this sample when you want to understand:
+
+- How to expose a classic `dubbo://` provider in plain Java.
+- How to register provider URLs in ZooKeeper.
+- How to keep provider dependencies explicit and limited.
+- How to return JSON bytes from a provider for low-overhead HTTP forwarding by a Rust-Java consumer.
+- How to add PostgreSQL access through HikariCP and ActiveJDBC without Spring.
+- How to separate runtime classes from record DTOs.
+
+This is not a generic enterprise Dubbo provider template. It is a focused provider used to validate
+the Rust-Java REST Dubbo consumer path.
+
+## Relationship With Other Projects
+
+This provider is designed to be used by:
+
+```text
+git@github.com:esasmer-dou/rest-sample-dubbo-consumer.git
+```
+
+Runtime relation:
+
+```text
+rest-sample-dubbo-consumer
+  -> java-rust-dubbo native consumer
+  -> dubbo:// provider on this project
+  -> optional PostgreSQL query
+  -> JSON byte[]
+```
+
+The provider registers under ZooKeeper:
+
+```text
+/dubbo/com.reactor.rust.dubbo.sample.NestedCatalogService/providers
+```
+
+## Architecture
+
+```text
+Dubbo consumer
+  -> ZooKeeper provider URL or static host:port
+  -> PlainDubboProvider
+  -> NestedCatalogServiceImpl
+  -> optional PostgresCustomerRepository
+  -> JSON byte[]
+```
+
+The provider intentionally returns JSON bytes:
+
+```java
+public interface NestedCatalogService {
+    byte[] getNestedCatalogJson();
+    byte[] getDatabaseCustomersJson();
+}
+```
+
+The consumer can forward those bytes through `RawResponse.json(...)` without building another DTO
+graph.
+
+## Package Structure
+
+```text
+com.reactor.sample.dubbo.provider.app
+  Process entry point and provider bootstrap.
+
+com.reactor.sample.dubbo.provider.config
+  Properties-only runtime config and Netty/Dubbo tuning keys.
+
+com.reactor.sample.dubbo.provider.db
+  HikariCP, ActiveJDBC repository, and sample DB record model.
+
+com.reactor.sample.dubbo.provider.service
+  Dubbo service implementation.
+
+com.reactor.sample.dubbo.provider.dubbo
+  Minimal Dubbo export and runtime model.
+
+com.reactor.sample.dubbo.provider.registry
+  ZooKeeper provider registration.
+
+com.reactor.rust.dubbo.sample
+  Shared Dubbo interface example. In production, move this to a shared API jar.
+```
+
+Main class:
+
+```text
+com.reactor.sample.dubbo.provider.app.NestedCatalogProviderApplication
+```
+
+## DTO, Runtime Class, and Response Model
+
+The Rust-Java framework standard is:
+
+```text
+HTTP JSON request/response DTO = Java record
+Runtime behavior/resource owner = Java class
+Already serialized JSON/RPC payload = byte[] + RawResponse
+```
+
+The classes in this provider are not HTTP JSON DTOs:
+
+| Type | Role | JSON DTO? |
+|------|------|-----------|
+| `NestedCatalogProviderApplication` | Process bootstrap and shutdown hook. | No |
+| `ProviderProperties` | Reads and validates runtime properties. | No |
+| `ProviderRuntimeTuning` | Applies Dubbo/Netty startup tuning. | No |
+| `PlainDubboProvider` | Exports Dubbo protocol and owns exporter lifecycle. | No |
+| `ZookeeperProviderRegistration` | Owns ZooKeeper session and ephemeral node lifecycle. | No |
+| `PostgresCustomerRepository` | Owns DB access behavior and pool usage. | No |
+| `NestedCatalogServiceImpl` | Dubbo business service implementation. | No |
+| `SampleCustomer` | Immutable DB row model. | Yes, record is correct. |
+
+### Use Case: DB Row Model
+
+Use records for immutable data rows:
+
+```java
+public record CustomerRow(long id, String customerNo, String fullName) {}
+```
+
+Use classes for repositories and resources:
+
+```java
+public final class CustomerRepository implements AutoCloseable {
+    public List<CustomerRow> findCustomers() {
+        return List.of();
+    }
+}
+```
+
+### Use Case: Provider Returns Ready JSON
+
+Use `byte[]` when the provider intentionally returns ready-to-forward JSON:
+
+```java
+public byte[] getCatalogJson() {
+    return jsonBytes;
+}
+```
+
+This is the path used by this sample.
+
+### Use Case: Object Contract Instead of JSON Bytes
+
+If your Dubbo API should return domain objects, use records in a shared API jar:
+
+```java
+public record CatalogItem(String sku, String name) {}
+
+public record CatalogResponse(String source, List<CatalogItem> items) {}
+
+public interface CatalogService {
+    CatalogResponse getCatalog();
+}
+```
+
+That model is more object-oriented, but it adds serialization and object graph cost for the consumer.
+
+## Dependencies
+
+Provider process is heavier than the consumer because it is a real Dubbo server. The dependency set is
+kept explicit:
+
+| Dependency | Purpose |
+|------------|---------|
+| `dubbo-rpc-dubbo` | Classic `dubbo://` protocol export. |
+| `dubbo-remoting-netty4` + `netty-handler` | TCP server transport. |
+| `dubbo-serialization-hessian2` | Hessian2 payload compatibility. |
+| `zookeeper` | Provider URL registration with ephemeral nodes. |
+| `activejdbc` | Simple JDBC access without Spring. |
+| `postgresql` | PostgreSQL JDBC driver. |
+| `HikariCP` | Bounded JDBC connection pool. |
+| `slf4j-nop` | Quiet sample runtime logging. |
+
+Intentionally excluded:
+
+- Spring Boot
+- Dubbo Spring Boot starter
+- Dubbo consumer/reference/config stack
+- Dubbo governance/router features
+- Netty proxy/socks/http2/epoll native packages
+- Spring JDBC/AOP starters
+
+Note: some Dubbo metrics/API classes remain on the classpath because Dubbo server bytecode references
+them. Runtime metrics, tracing, and QoS are disabled by properties.
+
+## Configuration
+
+Main config file:
+
+```text
+src/main/resources/rest-sample-dubbo-provider.properties
+```
+
+Read order:
+
+```text
+system property > environment variable > classpath properties
+```
+
+Runtime values live in the properties file. Missing or invalid properties fail fast.
+
+Important properties:
+
+| Property | Purpose |
+|----------|---------|
+| `dubbo.provider.host` | Host advertised in the Dubbo provider URL. |
+| `dubbo.provider.bind-host` | Local bind host. Use `0.0.0.0` in containers if needed. |
+| `dubbo.provider.port` | Dubbo provider port. Default sample value is `20880`. |
+| `reactor.dubbo.registry-address` | ZooKeeper registry address. |
+| `sample.db.jdbc-url` | PostgreSQL JDBC URL. |
+| `sample.db.maximum-pool-size` | Hikari maximum pool size. |
+| `sample.db.minimum-idle` | Hikari minimum idle connections. `0` keeps idle RSS lower. |
+| `sample.db.schema-init` | Creates demo table and data when true. |
+| `sample.db.warmup` | Opens DB connection and seeds data before provider is ready. |
+| `io.netty.allocator.numDirectArenas` | Low-RSS Netty allocator tuning. |
+
+## Quick Start
+
+Prerequisites:
+
+- Java 21
+- Maven 3.9+
+- Docker for ZooKeeper and PostgreSQL
+
+Start ZooKeeper:
+
+```powershell
+docker run -d --name rust-java-dubbo-zookeeper -p 2181:2181 zookeeper:3.7.2
+```
+
+Start PostgreSQL:
+
+```powershell
+docker run -d --name rest-sample-postgres `
+  -e POSTGRES_DB=reactor_sample `
+  -e POSTGRES_USER=reactor `
+  -e POSTGRES_PASSWORD=reactor `
+  -p 15432:5432 `
+  postgres:16-alpine
+```
+
+Build and run:
+
+```powershell
+git clone git@github.com:esasmer-dou/rest-sample-dubbo-provider.git
+cd rest-sample-dubbo-provider
+mvn -q test
+mvn -q exec:java
+```
+
+Expected startup output:
+
+```text
+[rest-sample-dubbo-provider] database warmup completed
+[rest-sample-dubbo-provider] exported dubbo://127.0.0.1:20880/...
+[rest-sample-dubbo-provider] registered at zookeeper://127.0.0.1:2181/dubbo
+```
+
+## Test With Consumer
+
+Start the consumer:
+
+```powershell
+git clone git@github.com:esasmer-dou/rest-sample-dubbo-consumer.git
+cd rest-sample-dubbo-consumer
+mvn -q exec:java
+```
+
+Call through the REST consumer:
+
+```powershell
+curl http://127.0.0.1:8080/api/v1/catalog/nested
+curl http://127.0.0.1:8080/api/v1/catalog/db/customers
+```
+
+Expected DB-backed response includes:
+
+```json
+{
+  "source": "rest-sample-dubbo-provider",
+  "storage": "postgresql-activejdbc-hikari",
+  "customers": [
+    {
+      "customerNo": "CUST-1001",
+      "fullName": "Mustafa Korkmaz",
+      "segment": "pilot"
+    }
+  ]
+}
+```
+
+## Container/Kubernetes Notes
+
+For container environments, override bind/advertised host values explicitly:
+
+```powershell
+$env:DUBBO_PROVIDER_BIND_HOST="0.0.0.0"
+$env:DUBBO_PROVIDER_HOST="catalog-provider"
+$env:REACTOR_DUBBO_REGISTRY_ADDRESS="zookeeper://zookeeper:2181"
+$env:SAMPLE_DB_JDBC_URL="jdbc:postgresql://postgres:5432/reactor_sample"
+mvn -q exec:java
+```
+
+Use a small Hikari pool first. Increasing DB pool size without measuring provider CPU, DB capacity,
+and consumer concurrency can worsen tail latency.
+
+## Troubleshooting
+
+| Symptom | Check |
+|---------|-------|
+| Provider does not start | Verify ZooKeeper is listening on `2181`. |
+| DB endpoint fails | Verify PostgreSQL is listening on `15432` and credentials match properties. |
+| Consumer cannot call provider | Verify provider is listening on `20880`. |
+| ZooKeeper discovery does not work | Verify provider node exists under `/dubbo/.../providers`. |
+| High RSS | Keep Hikari pool small, disable unused Dubbo features, and avoid large Java DTO graphs. |
+
+## Production Notes
+
+- Move `NestedCatalogService` to a shared API jar before real use.
+- Keep runtime properties explicit.
+- Use records for domain DTO contracts.
+- Use classes for lifecycle/resource owners.
+- Keep DB migration outside the hot provider process in production.
+- Protect operational endpoints and secrets outside this sample.
