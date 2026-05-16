@@ -39,6 +39,10 @@ public final class RestSampleDubboProviderApplication {
                 config.registryAddress(),
                 config.registryRoot()
         );
+        PlainDubboProvider.ServiceExecutionConfig catalogExecution =
+                serviceExecutionConfig(NestedCatalogService.class);
+        PlainDubboProvider.ServiceExecutionConfig customerExecution =
+                serviceExecutionConfig(CustomerQueryService.class);
 
         PlainDubboProvider<NestedCatalogService> catalogProvider = null;
         PlainDubboProvider<CustomerQueryService> customerProvider = null;
@@ -47,13 +51,15 @@ public final class RestSampleDubboProviderApplication {
                     NestedCatalogService.class,
                     catalogService,
                     config,
-                    registration
+                    registration,
+                    catalogExecution
             );
             customerProvider = PlainDubboProvider.export(
                     CustomerQueryService.class,
                     customerService,
                     config,
-                    registration
+                    registration,
+                    customerExecution
             );
         } catch (Exception e) {
             closeQuietly(customerProvider);
@@ -76,9 +82,25 @@ public final class RestSampleDubboProviderApplication {
 
         System.out.println("[rest-sample-dubbo-provider] exported " + catalogProvider.url().toFullString());
         System.out.println("[rest-sample-dubbo-provider] exported " + customerProvider.url().toFullString());
+        System.out.println("[rest-sample-dubbo-provider] execution limits "
+                + NestedCatalogService.class.getSimpleName() + "=" + catalogExecution.maxConcurrentInvocations()
+                + ", " + CustomerQueryService.class.getSimpleName() + "="
+                + customerExecution.maxConcurrentInvocations());
         System.out.println("[rest-sample-dubbo-provider] registered at "
                 + config.registryAddress() + "/" + config.registryRoot());
         stop.await();
+    }
+
+    private static PlainDubboProvider.ServiceExecutionConfig serviceExecutionConfig(Class<?> serviceType) {
+        int defaultMax = ProviderProperties.getInt("dubbo.provider.service.default.max-concurrent");
+        int max = ProviderProperties.getIntOrDefault(
+                "dubbo.provider.service." + serviceType.getName() + ".max-concurrent",
+                ProviderProperties.getIntOrDefault(
+                        "dubbo.provider.service." + serviceType.getSimpleName() + ".max-concurrent",
+                        defaultMax
+                )
+        );
+        return PlainDubboProvider.ServiceExecutionConfig.bounded(max);
     }
 
     private static void closeQuietly(AutoCloseable closeable) {

@@ -88,6 +88,44 @@ wire etmek kolay diye alakasız read/write operasyonlarını tek god interface i
 Provider iki interface node'unu tek ZooKeeper session ile register eder. Her export için ayrı
 ZooKeeper client açmak çalışırdı, fakat gereksiz thread/session overhead üretirdi.
 
+## Interface Bazlı Execution Limitleri
+
+Her exported Dubbo interface kendi execution bulkhead'ine sahiptir. Bu şu production sorusunu cevaplar:
+"Bu interface implementasyonu aynı anda maksimum kaç service method execution çalıştırabilir?"
+
+Bu bilinçli olarak interface başına yeni thread pool değildir. Her service için ayrı executor açmak
+thread stack RSS getirir ve overload'u queue içinde saklayabilir. Sample, implementasyon önünde düşük
+overhead'li semaphore gate kullanır:
+
+```text
+Dubbo request
+  -> PlainDubboProvider ReflectiveInvoker
+  -> interface bazlı concurrency gate
+  -> service implementation method
+```
+
+Limit doluysa provider çağrıyı hemen reject eder. Bu fail-fast davranış p99 ve memory açısından
+unbounded queue büyütmekten daha güvenlidir.
+
+Varsayılan sample limitleri:
+
+| Interface | Property | Default | Neden? |
+|-----------|----------|---------|--------|
+| Tüm servisler | `dubbo.provider.service.default.max-concurrent` | `16` | Küçük sample servisler için güvenli fallback. |
+| `NestedCatalogService` | `dubbo.provider.service.NestedCatalogService.max-concurrent` | `16` | Catalog JSON üretimini CPU/allocation açısından sınırlar. |
+| `CustomerQueryService` | `dubbo.provider.service.CustomerQueryService.max-concurrent` | `2` | `sample.db.maximum-pool-size=2` ile hizalıdır; DB pool queue büyümesini engeller. |
+
+Simple name çakışması varsa fully qualified interface adı da kullanılabilir:
+
+```properties
+dubbo.provider.service.com.reactor.rust.dubbo.sample.CustomerQueryService.max-concurrent=2
+```
+
+BEST: service limitini o interface arkasındaki gerçek darboğaza göre belirlemek. DB-backed servislerde
+Hikari max pool size veya daha düşük bir değerle başlamak doğru olur. CPU-heavy serialization
+servislerinde CPU kapasitesine göre başlayıp p99 load test ile doğrulayın. ANTI-PATTERN: tüm
+interface'lere büyük sayı verip overload'u DB pool, heap veya Netty thread'lerine bırakmak.
+
 ## Paket Yapısı
 
 ```text
@@ -337,6 +375,9 @@ Runtime değerleri properties dosyasındadır. Eksik veya hatalı property start
 | `dubbo.provider.bind-host` | Local bind host. Container içinde gerekirse `0.0.0.0`. |
 | `dubbo.provider.port` | Dubbo provider portu. Sample default değeri `20880`. |
 | `reactor.dubbo.registry-address` | ZooKeeper registry adresi. |
+| `dubbo.provider.service.default.max-concurrent` | Export edilen interface'ler için default concurrent invocation limiti. |
+| `dubbo.provider.service.NestedCatalogService.max-concurrent` | Catalog provider method'ları için concurrent invocation limiti. |
+| `dubbo.provider.service.CustomerQueryService.max-concurrent` | DB-backed customer provider method'ları için concurrent invocation limiti. |
 | `sample.db.jdbc-url` | PostgreSQL JDBC URL. |
 | `sample.db.maximum-pool-size` | Hikari maximum pool size. |
 | `sample.db.minimum-idle` | Hikari minimum idle connection sayısı. `0` idle RSS'i düşük tutar. |
@@ -384,6 +425,7 @@ Beklenen startup çıktısı:
 [rest-sample-dubbo-provider] database warmup completed
 [rest-sample-dubbo-provider] exported dubbo://127.0.0.1:20880/com.reactor.rust.dubbo.sample.NestedCatalogService...
 [rest-sample-dubbo-provider] exported dubbo://127.0.0.1:20880/com.reactor.rust.dubbo.sample.CustomerQueryService...
+[rest-sample-dubbo-provider] execution limits NestedCatalogService=16, CustomerQueryService=2
 [rest-sample-dubbo-provider] registered at zookeeper://127.0.0.1:2181/dubbo
 ```
 

@@ -18,6 +18,8 @@ import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.TreeSet;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.Semaphore;
 
 public final class PlainDubboProvider<T> implements AutoCloseable {
 
@@ -36,12 +38,21 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
             T service,
             ProviderConfig config
     ) throws Exception {
+        return export(serviceType, service, config, ServiceExecutionConfig.unbounded());
+    }
+
+    public static <T> PlainDubboProvider<T> export(
+            Class<T> serviceType,
+            T service,
+            ProviderConfig config,
+            ServiceExecutionConfig executionConfig
+    ) throws Exception {
         ZookeeperProviderRegistration registration = ZookeeperProviderRegistration.open(
                 config.registryAddress(),
                 config.registryRoot()
         );
         try {
-            return export(serviceType, service, config, registration, true);
+            return export(serviceType, service, config, registration, executionConfig, true);
         } catch (Exception e) {
             registration.close();
             throw e;
@@ -54,7 +65,17 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
             ProviderConfig config,
             ZookeeperProviderRegistration sharedRegistration
     ) throws Exception {
-        return export(serviceType, service, config, sharedRegistration, false);
+        return export(serviceType, service, config, sharedRegistration, ServiceExecutionConfig.unbounded());
+    }
+
+    public static <T> PlainDubboProvider<T> export(
+            Class<T> serviceType,
+            T service,
+            ProviderConfig config,
+            ZookeeperProviderRegistration sharedRegistration,
+            ServiceExecutionConfig executionConfig
+    ) throws Exception {
+        return export(serviceType, service, config, sharedRegistration, executionConfig, false);
     }
 
     private static <T> PlainDubboProvider<T> export(
@@ -62,12 +83,13 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
             T service,
             ProviderConfig config,
             ZookeeperProviderRegistration registration,
+            ServiceExecutionConfig executionConfig,
             boolean closeRegistration
     ) throws Exception {
-        URL exportUrl = providerUrl(serviceType, config);
+        URL exportUrl = providerUrl(serviceType, config, executionConfig);
         registerServiceModel(serviceType, service, exportUrl);
         registerPermittedSerialization(exportUrl);
-        Invoker<T> invoker = new ReflectiveInvoker<>(service, serviceType, exportUrl);
+        Invoker<T> invoker = new ReflectiveInvoker<>(service, serviceType, exportUrl, executionConfig);
 
         ExtensionLoader<Protocol> loader = DubboProviderRuntimeModel.module().getExtensionLoader(Protocol.class);
         Protocol protocol = loader.getExtension("dubbo", false);
@@ -99,7 +121,10 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
         }
     }
 
-    private static <T> URL providerUrl(Class<T> serviceType, ProviderConfig config) {
+    private static <T> URL providerUrl(
+            Class<T> serviceType,
+            ProviderConfig config,
+            ServiceExecutionConfig executionConfig) {
         Map<String, String> parameters = new LinkedHashMap<>();
         parameters.put("application", config.applicationName());
         parameters.put("interface", serviceType.getName());
@@ -114,6 +139,10 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
         parameters.put("bind.ip", config.bindHost());
         parameters.put("bind.port", Integer.toString(config.port()));
         parameters.put("dubbo", "3.3.5");
+        if (executionConfig.isBounded()) {
+            parameters.put("executes", Integer.toString(executionConfig.maxConcurrentInvocations()));
+            parameters.put("sample.max-concurrent", Integer.toString(executionConfig.maxConcurrentInvocations()));
+        }
 
         return new URL("dubbo", config.host(), config.port(), serviceType.getName(), parameters)
                 .setScopeModel(DubboProviderRuntimeModel.module());
@@ -155,18 +184,60 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
 
     private static final class ReflectiveInvoker<T> extends AbstractProxyInvoker<T> {
 
-        private ReflectiveInvoker(T proxy, Class<T> type, URL url) {
+        private final ServiceConcurrencyGate concurrencyGate;
+
+        private ReflectiveInvoker(T proxy, Class<T> type, URL url, ServiceExecutionConfig executionConfig) {
             super(proxy, type, url);
+            this.concurrencyGate = ServiceConcurrencyGate.forService(type, executionConfig);
         }
 
         @Override
         protected Object doInvoke(T proxy, String methodName, Class<?>[] parameterTypes, Object[] arguments)
                 throws Throwable {
+            concurrencyGate.acquireOrReject(methodName);
             try {
                 Method method = proxy.getClass().getMethod(methodName, parameterTypes);
                 return method.invoke(proxy, arguments);
             } catch (InvocationTargetException e) {
                 throw e.getTargetException();
+            } finally {
+                concurrencyGate.release();
+            }
+        }
+    }
+
+    private static final class ServiceConcurrencyGate {
+
+        private final String serviceName;
+        private final int maxConcurrentInvocations;
+        private final Semaphore semaphore;
+
+        private ServiceConcurrencyGate(Class<?> serviceType, ServiceExecutionConfig executionConfig) {
+            this.serviceName = serviceType.getName();
+            this.maxConcurrentInvocations = executionConfig.maxConcurrentInvocations();
+            this.semaphore = executionConfig.isBounded()
+                    ? new Semaphore(executionConfig.maxConcurrentInvocations(), false)
+                    : null;
+        }
+
+        static ServiceConcurrencyGate forService(Class<?> serviceType, ServiceExecutionConfig executionConfig) {
+            return new ServiceConcurrencyGate(serviceType, executionConfig);
+        }
+
+        void acquireOrReject(String methodName) {
+            if (semaphore == null) {
+                return;
+            }
+            if (!semaphore.tryAcquire()) {
+                throw new RejectedExecutionException("Dubbo provider concurrency limit exceeded for "
+                        + serviceName + "." + methodName
+                        + " maxConcurrent=" + maxConcurrentInvocations);
+            }
+        }
+
+        void release() {
+            if (semaphore != null) {
+                semaphore.release();
             }
         }
     }
@@ -178,4 +249,25 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
             String host,
             String bindHost,
             int port) {}
+
+    public record ServiceExecutionConfig(int maxConcurrentInvocations) {
+
+        public ServiceExecutionConfig {
+            if (maxConcurrentInvocations < 1) {
+                throw new IllegalArgumentException("maxConcurrentInvocations must be >= 1");
+            }
+        }
+
+        public static ServiceExecutionConfig bounded(int maxConcurrentInvocations) {
+            return new ServiceExecutionConfig(maxConcurrentInvocations);
+        }
+
+        public static ServiceExecutionConfig unbounded() {
+            return new ServiceExecutionConfig(Integer.MAX_VALUE);
+        }
+
+        boolean isBounded() {
+            return maxConcurrentInvocations != Integer.MAX_VALUE;
+        }
+    }
 }

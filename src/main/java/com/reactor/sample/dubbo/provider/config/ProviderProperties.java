@@ -12,6 +12,31 @@ public final class ProviderProperties {
     private ProviderProperties() {}
 
     public static String get(String key) {
+        String value = find(key);
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException("Missing required provider property: " + key);
+        }
+        return value.trim();
+    }
+
+    public static String getOrDefault(String key, String defaultValue) {
+        String value = find(key);
+        return value == null || value.isBlank() ? defaultValue : value.trim();
+    }
+
+    public static int getIntOrDefault(String key, int defaultValue) {
+        String value = find(key);
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Provider property must be an integer: " + key + "=" + value, e);
+        }
+    }
+
+    private static String find(String key) {
         String value = System.getProperty(key);
         if (value == null || value.isBlank()) {
             value = System.getenv(envKey(key));
@@ -19,10 +44,7 @@ public final class ProviderProperties {
         if (value == null || value.isBlank()) {
             value = CLASSPATH_PROPERTIES.getProperty(key);
         }
-        if (value == null || value.isBlank()) {
-            throw new IllegalStateException("Missing required provider property: " + key);
-        }
-        return value.trim();
+        return value;
     }
 
     public static int getInt(String key) {
