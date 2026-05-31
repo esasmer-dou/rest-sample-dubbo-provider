@@ -49,6 +49,27 @@ Provider her interface için ZooKeeper altında ayrı path'e register olur:
 /dubbo/com.reactor.rust.dubbo.sample.CustomerQueryService/providers
 ```
 
+## `rust-java-rest` 3.1.0-rc5 Bu Provider'ı Nasıl Etkiler?
+
+Bu provider `rust-java-rest` bağımlılığı almaz; bu şekilde kalması doğrudur. Provider'ın görevi,
+`rest-sample-dubbo-consumer` uygulamasının rc5 low-overhead response yolunu kullanabileceği küçük bir
+Dubbo kontratı expose etmektir.
+
+| Provider tercihi | rc5 consumer üzerindeki etkisi |
+|------------------|--------------------------------|
+| UTF-8 JSON'u `byte[]` olarak dönmek | Consumer `RawResponse.json(bytes)` döner ve ikinci DTO graph kurmaz. |
+| Interface'leri küçük tutmak | Consumer timeout, backpressure ve metrics değerlerini RPC alanına göre tune edebilir. |
+| Method concurrency değerlerini bounded tutmak | Provider overload heap, DB pool veya Netty queue büyümesine dönüşmeden görünür olur. |
+| DB method limitlerini Hikari ile hizalamak | DB saturation derin queue yerine fail-fast verdiği için consumer p99 daha stabil kalır. |
+| Pass-through response için büyük object graph'tan kaçınmak | rc5 kazanımları Hessian materialization ve JSON reserialization ile silinmez. |
+
+Provider UTF-8 JSON bytes yazıyor ve consumer JSON content type ile dönüyorsa Türkçe karakterler bu
+akışta güvenli taşınır. JSON üretirken platform-default encoding kullanmayın.
+
+BEST: read-heavy pass-through JSON için `byte[]` dönmek. ACCEPTABLE: consumer typed business karar
+verecekse record dönmek. ANTI-PATTERN: consumer hemen tekrar JSON'a çevirecekse büyük nested object
+graph dönmek.
+
 ## Mimari Akış
 
 ```text
@@ -368,6 +389,22 @@ Bilinçli olarak dışarıda bırakılanlar:
 
 Not: Bazı Dubbo metrics/API sınıfları classpath'te kalır çünkü Dubbo server bytecode'u bunlara
 referans verir. Runtime'da metrics, tracing ve QoS properties ile kapalıdır.
+
+## rc5 Consumer ile Çalıştırma Sırası
+
+Lokal test için en temiz sıra:
+
+```text
+1. ZooKeeper'ı başlatın.
+2. DB-backed endpoint'ler açıksa PostgreSQL'i başlatın.
+3. Bu provider'ı başlatın.
+4. rust-java-rest 3.1.0-rc5 kullanan rest-sample-dubbo-consumer'ı başlatın.
+5. Provider'ı doğrudan değil, consumer REST endpoint'lerini çağırarak test edin.
+```
+
+Provider bilinçli olarak plain Java Dubbo server'dır. Low-RSS HTTP davranışı `rust-java-rest` çalışan
+consumer process'e aittir; provider hazır JSON bytes dönerek ve server-side concurrency'yi bounded
+tutarak bu davranışı korur.
 
 ## Konfigürasyon
 
