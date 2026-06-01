@@ -48,19 +48,19 @@ The provider registers each interface under its own ZooKeeper path:
 /dubbo/com.reactor.rust.dubbo.sample.CustomerQueryService/providers
 ```
 
-## How `rust-java-rest` 3.1.0-rc5 Affects This Provider
+## How `rust-java-rest` 3.1.0 Affects This Provider
 
 This provider does not depend on `rust-java-rest`, and it should stay that way. Its job is to expose
-a small Dubbo contract that lets the `rest-sample-dubbo-consumer` use the rc5 low-overhead response
+a small Dubbo contract that lets the `rest-sample-dubbo-consumer` use the v3.1 low-overhead response
 path.
 
-| Provider choice | Effect on the rc5 consumer |
+| Provider choice | Effect on the v3.1 consumer |
 |-----------------|----------------------------|
 | Return UTF-8 JSON as `byte[]` | Consumer can return `RawResponse.json(bytes)` and avoid a second DTO graph. |
 | Keep interfaces small | Consumer can tune timeouts, backpressure, and metrics per RPC area. |
 | Keep method concurrency bounded | Provider overload becomes explicit instead of turning into heap, DB pool, or Netty queue growth. |
 | Align DB method limits with Hikari | Consumer p99 is more stable because DB saturation fails fast instead of queueing deeply. |
-| Avoid huge object graphs for pass-through responses | rc5 improvements are preserved instead of being erased by Hessian materialization and JSON reserialization. |
+| Avoid huge object graphs for pass-through responses | v3.1 improvements are preserved instead of being erased by Hessian materialization and JSON reserialization. |
 
 Turkish characters are safe in this flow when the provider writes UTF-8 JSON bytes and the consumer
 returns them with JSON content type. Do not build JSON through platform-default encodings.
@@ -388,7 +388,7 @@ Intentionally excluded:
 Note: some Dubbo metrics/API classes remain on the classpath because Dubbo server bytecode references
 them. Runtime metrics, tracing, and QoS are disabled by properties.
 
-## Run Order With the rc5 Consumer
+## Run Order With the v3.1 Consumer
 
 Use this order for the cleanest local test:
 
@@ -396,7 +396,7 @@ Use this order for the cleanest local test:
 1. Start ZooKeeper.
 2. Start PostgreSQL if DB-backed endpoints are enabled.
 3. Start this provider.
-4. Start rest-sample-dubbo-consumer on rust-java-rest 3.1.0-rc5.
+4. Start rest-sample-dubbo-consumer on rust-java-rest 3.1.0.
 5. Call the consumer REST endpoints, not the provider directly.
 ```
 
