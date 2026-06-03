@@ -48,19 +48,20 @@ The provider registers each interface under its own ZooKeeper path:
 /dubbo/com.reactor.rust.dubbo.sample.CustomerQueryService/providers
 ```
 
-## How `rust-java-rest` 3.1.0 Affects This Provider
+## How `rust-java-rest` 3.2.0 Affects This Provider
 
 This provider does not depend on `rust-java-rest`, and it should stay that way. Its job is to expose
-a small Dubbo contract that lets the `rest-sample-dubbo-consumer` use the v3.1 low-overhead response
+a small Dubbo contract that lets the `rest-sample-dubbo-consumer` use the v3.2 low-overhead response
 path.
 
-| Provider choice | Effect on the v3.1 consumer |
+| Provider choice | Effect on the v3.2 consumer |
 |-----------------|----------------------------|
 | Return UTF-8 JSON as `byte[]` | Consumer can return `RawResponse.json(bytes)` and avoid a second DTO graph. |
 | Keep interfaces small | Consumer can tune timeouts, backpressure, and metrics per RPC area. |
 | Keep method concurrency bounded | Provider overload becomes explicit instead of turning into heap, DB pool, or Netty queue growth. |
 | Align DB method limits with Hikari | Consumer p99 is more stable because DB saturation fails fast instead of queueing deeply. |
-| Avoid huge object graphs for pass-through responses | v3.1 improvements are preserved instead of being erased by Hessian materialization and JSON reserialization. |
+| Match provider limits with consumer route admission | A slow provider method cannot fill the consumer global JNI queue. |
+| Avoid huge object graphs for pass-through responses | v3.2 improvements are preserved instead of being erased by Hessian materialization and JSON reserialization. |
 
 Turkish characters are safe in this flow when the provider writes UTF-8 JSON bytes and the consumer
 returns them with JSON content type. Do not build JSON through platform-default encodings.
@@ -68,6 +69,21 @@ returns them with JSON content type. Do not build JSON through platform-default 
 BEST: return `byte[]` for read-heavy pass-through JSON. ACCEPTABLE: return records when the consumer
 must make typed business decisions. ANTI-PATTERN: return a large nested object graph only for the
 consumer to convert it back to JSON.
+
+### How To Align Provider Limits With The Consumer
+
+The consumer sample protects Dubbo routes with `@RouteAdmission`. Keep these values related to the
+provider limits instead of tuning them independently:
+
+| Provider capacity | Consumer setting to check | Practical rule |
+|-------------------|---------------------------|----------------|
+| `dubbo.provider.service.NestedCatalogService.max-concurrent=16` | `reactor.rust.route-admission.get.api.v1.catalog.nested.max-concurrent=16` | The consumer may allow the same number of simple catalog calls as the provider can execute. |
+| `dubbo.provider.service.CustomerQueryService.max-concurrent=2` | DB route admission `max-concurrent=8` | More consumer in-flight calls are acceptable only because calls are async and short; if p99 grows, lower this first. |
+| `sample.db.maximum-pool-size=2` | DB method provider limit | DB method concurrency should not exceed the Hikari pool unless you intentionally want provider-side waiting. |
+
+BEST: start with small provider limits and increase only after measuring provider CPU, DB pool wait,
+consumer 503 rate, p99 latency, and RSS together. ANTI-PATTERN: increase consumer workers while the
+provider DB pool is already saturated.
 
 ## Architecture
 
@@ -388,7 +404,7 @@ Intentionally excluded:
 Note: some Dubbo metrics/API classes remain on the classpath because Dubbo server bytecode references
 them. Runtime metrics, tracing, and QoS are disabled by properties.
 
-## Run Order With the v3.1 Consumer
+## Run Order With the v3.2 Consumer
 
 Use this order for the cleanest local test:
 
@@ -396,7 +412,7 @@ Use this order for the cleanest local test:
 1. Start ZooKeeper.
 2. Start PostgreSQL if DB-backed endpoints are enabled.
 3. Start this provider.
-4. Start rest-sample-dubbo-consumer on rust-java-rest 3.1.0.
+4. Start rest-sample-dubbo-consumer on rust-java-rest 3.2.0.
 5. Call the consumer REST endpoints, not the provider directly.
 ```
 
@@ -435,6 +451,7 @@ Important properties:
 | `sample.db.jdbc-url` | PostgreSQL JDBC URL. |
 | `sample.db.maximum-pool-size` | Hikari maximum pool size. |
 | `sample.db.minimum-idle` | Hikari minimum idle connections. `0` keeps idle RSS lower. |
+| `sample.db.connection-timeout-ms` | Maximum time to wait for a DB connection. Default `3000` keeps local cold start usable while still failing fast. |
 | `sample.db.schema-init` | Creates demo table and data when true. |
 | `sample.db.warmup` | Opens DB connection and seeds data before provider is ready. |
 | `io.netty.allocator.numDirectArenas` | Low-RSS Netty allocator tuning. |
@@ -463,6 +480,15 @@ docker run -d --name rest-sample-postgres `
   -p 15432:5432 `
   postgres:16-alpine
 ```
+
+Wait until PostgreSQL is ready before starting the provider:
+
+```powershell
+docker exec rest-sample-postgres pg_isready -U reactor -d reactor_sample
+```
+
+The sample uses a bounded Hikari pool and `sample.db.connection-timeout-ms=3000`. That value is long
+enough for a normal local cold start but still short enough to fail fast when the DB is actually down.
 
 Build and run:
 

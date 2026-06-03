@@ -49,19 +49,20 @@ Provider her interface için ZooKeeper altında ayrı path'e register olur:
 /dubbo/com.reactor.rust.dubbo.sample.CustomerQueryService/providers
 ```
 
-## `rust-java-rest` 3.1.0 Bu Provider'ı Nasıl Etkiler?
+## `rust-java-rest` 3.2.0 Bu Provider'ı Nasıl Etkiler?
 
 Bu provider `rust-java-rest` bağımlılığı almaz; bu şekilde kalması doğrudur. Provider'ın görevi,
-`rest-sample-dubbo-consumer` uygulamasının v3.1 low-overhead response yolunu kullanabileceği küçük bir
+`rest-sample-dubbo-consumer` uygulamasının v3.2 low-overhead response yolunu kullanabileceği küçük bir
 Dubbo kontratı expose etmektir.
 
-| Provider tercihi | v3.1 consumer üzerindeki etkisi |
+| Provider tercihi | v3.2 consumer üzerindeki etkisi |
 |------------------|--------------------------------|
 | UTF-8 JSON'u `byte[]` olarak dönmek | Consumer `RawResponse.json(bytes)` döner ve ikinci DTO graph kurmaz. |
 | Interface'leri küçük tutmak | Consumer timeout, backpressure ve metrics değerlerini RPC alanına göre tune edebilir. |
 | Method concurrency değerlerini bounded tutmak | Provider overload heap, DB pool veya Netty queue büyümesine dönüşmeden görünür olur. |
 | DB method limitlerini Hikari ile hizalamak | DB saturation derin queue yerine fail-fast verdiği için consumer p99 daha stabil kalır. |
-| Pass-through response için büyük object graph'tan kaçınmak | v3.1 kazanımları Hessian materialization ve JSON reserialization ile silinmez. |
+| Provider limitlerini consumer route admission ile eşlemek | Yavaş provider method'u consumer global JNI queue'yu dolduramaz. |
+| Pass-through response için büyük object graph'tan kaçınmak | v3.2 kazanımları Hessian materialization ve JSON reserialization ile silinmez. |
 
 Provider UTF-8 JSON bytes yazıyor ve consumer JSON content type ile dönüyorsa Türkçe karakterler bu
 akışta güvenli taşınır. JSON üretirken platform-default encoding kullanmayın.
@@ -69,6 +70,21 @@ akışta güvenli taşınır. JSON üretirken platform-default encoding kullanma
 BEST: read-heavy pass-through JSON için `byte[]` dönmek. ACCEPTABLE: consumer typed business karar
 verecekse record dönmek. ANTI-PATTERN: consumer hemen tekrar JSON'a çevirecekse büyük nested object
 graph dönmek.
+
+### Provider Limitlerini Consumer İle Nasıl Hizalarsınız?
+
+Consumer sample, Dubbo route'larını `@RouteAdmission` ile korur. Bu değerleri provider limitlerinden
+bağımsız tune etmeyin:
+
+| Provider kapasitesi | Consumer ayarı | Pratik kural |
+|---------------------|----------------|--------------|
+| `dubbo.provider.service.NestedCatalogService.max-concurrent=16` | `reactor.rust.route-admission.get.api.v1.catalog.nested.max-concurrent=16` | Consumer basit catalog çağrılarında provider'ın çalıştırabileceği kadar in-flight çağrıya izin verebilir. |
+| `dubbo.provider.service.CustomerQueryService.max-concurrent=2` | DB route admission `max-concurrent=8` | Async ve kısa çağrılarda bir miktar fazla consumer in-flight kabul edilebilir; p99 büyürse önce bunu düşürün. |
+| `sample.db.maximum-pool-size=2` | DB method provider limiti | Bilinçli provider-side bekleme istemiyorsanız DB method concurrency Hikari pool'u aşmamalı. |
+
+BEST: küçük provider limitleriyle başlayıp provider CPU, DB pool wait, consumer 503 oranı, p99 latency
+ve RSS'i birlikte ölçerek artırmak. ANTI-PATTERN: provider DB pool zaten saturation altındayken
+consumer worker sayısını artırmak.
 
 ## Mimari Akış
 
@@ -390,7 +406,7 @@ Bilinçli olarak dışarıda bırakılanlar:
 Not: Bazı Dubbo metrics/API sınıfları classpath'te kalır çünkü Dubbo server bytecode'u bunlara
 referans verir. Runtime'da metrics, tracing ve QoS properties ile kapalıdır.
 
-## v3.1 Consumer ile Çalıştırma Sırası
+## v3.2 Consumer ile Çalıştırma Sırası
 
 Lokal test için en temiz sıra:
 
@@ -398,7 +414,7 @@ Lokal test için en temiz sıra:
 1. ZooKeeper'ı başlatın.
 2. DB-backed endpoint'ler açıksa PostgreSQL'i başlatın.
 3. Bu provider'ı başlatın.
-4. rust-java-rest 3.1.0 kullanan rest-sample-dubbo-consumer'ı başlatın.
+4. rust-java-rest 3.2.0 kullanan rest-sample-dubbo-consumer'ı başlatın.
 5. Provider'ı doğrudan değil, consumer REST endpoint'lerini çağırarak test edin.
 ```
 
@@ -437,6 +453,7 @@ Runtime değerleri properties dosyasındadır. Eksik veya hatalı property start
 | `sample.db.jdbc-url` | PostgreSQL JDBC URL. |
 | `sample.db.maximum-pool-size` | Hikari maximum pool size. |
 | `sample.db.minimum-idle` | Hikari minimum idle connection sayısı. `0` idle RSS'i düşük tutar. |
+| `sample.db.connection-timeout-ms` | DB connection bekleme üst limiti. Default `3000`; lokal cold start'ı kullanılabilir tutar ama DB down ise fail-fast kalır. |
 | `sample.db.schema-init` | True ise demo tablo/data oluşturur. |
 | `sample.db.warmup` | Provider hazır olmadan önce DB connection ve seed işlemini yapar. |
 | `io.netty.allocator.numDirectArenas` | Low-RSS Netty allocator tuning. |
@@ -465,6 +482,15 @@ docker run -d --name rest-sample-postgres `
   -p 15432:5432 `
   postgres:16-alpine
 ```
+
+Provider'ı başlatmadan önce PostgreSQL'in hazır olduğunu kontrol edin:
+
+```powershell
+docker exec rest-sample-postgres pg_isready -U reactor -d reactor_sample
+```
+
+Sample bounded Hikari pool ve `sample.db.connection-timeout-ms=3000` kullanır. Bu değer normal lokal
+cold start için yeterince toleranslıdır; DB gerçekten down ise yine hızlı fail eder.
 
 Build ve run:
 
