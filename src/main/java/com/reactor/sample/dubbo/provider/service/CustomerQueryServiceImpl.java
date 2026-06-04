@@ -37,7 +37,10 @@ public final class CustomerQueryServiceImpl implements CustomerQueryService, Aut
             json.append("      \"customerNo\": \"").append(escapeJson(customer.customerNo())).append("\",\n");
             json.append("      \"fullName\": \"").append(escapeJson(customer.fullName())).append("\",\n");
             json.append("      \"segment\": \"").append(escapeJson(customer.segment())).append("\",\n");
-            json.append("      \"createdAt\": \"").append(customer.createdAt()).append("\"\n");
+            json.append("      \"email\": \"").append(escapeJson(customer.email())).append("\",\n");
+            json.append("      \"status\": \"").append(escapeJson(customer.status())).append("\",\n");
+            json.append("      \"createdAt\": \"").append(customer.createdAt()).append("\",\n");
+            json.append("      \"updatedAt\": \"").append(customer.updatedAt()).append("\"\n");
             json.append("    }");
             if (i + 1 < customers.size()) {
                 json.append(',');

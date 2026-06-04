@@ -1,5 +1,6 @@
 package com.reactor.sample.dubbo.provider.app;
 
+import com.reactor.rust.dubbo.sample.CustomerCommandService;
 import com.reactor.rust.dubbo.sample.CustomerQueryService;
 import com.reactor.rust.dubbo.sample.NestedCatalogService;
 import com.reactor.sample.dubbo.provider.config.ProviderProperties;
@@ -7,6 +8,7 @@ import com.reactor.sample.dubbo.provider.config.ProviderRuntimeTuning;
 import com.reactor.sample.dubbo.provider.db.PostgresCustomerRepository;
 import com.reactor.sample.dubbo.provider.dubbo.PlainDubboProvider;
 import com.reactor.sample.dubbo.provider.registry.ZookeeperProviderRegistration;
+import com.reactor.sample.dubbo.provider.service.CustomerCommandServiceImpl;
 import com.reactor.sample.dubbo.provider.service.CustomerQueryServiceImpl;
 import com.reactor.sample.dubbo.provider.service.NestedCatalogServiceImpl;
 
@@ -32,8 +34,10 @@ public final class RestSampleDubboProviderApplication {
         );
 
         NestedCatalogServiceImpl catalogService = new NestedCatalogServiceImpl();
-        CustomerQueryServiceImpl customerService =
-                new CustomerQueryServiceImpl(PostgresCustomerRepository.fromProperties());
+        PostgresCustomerRepository customerRepository = PostgresCustomerRepository.fromProperties();
+        CustomerQueryServiceImpl customerService = new CustomerQueryServiceImpl(customerRepository);
+        CustomerCommandServiceImpl customerCommandService =
+                new CustomerCommandServiceImpl(customerRepository);
         if (ProviderProperties.getBoolean("sample.db.warmup")) {
             customerService.warmupDatabase();
             System.out.println("[rest-sample-dubbo-provider] database warmup completed");
@@ -46,9 +50,12 @@ public final class RestSampleDubboProviderApplication {
                 serviceExecutionConfig(NestedCatalogService.class);
         PlainDubboProvider.ServiceExecutionConfig customerExecution =
                 serviceExecutionConfig(CustomerQueryService.class);
+        PlainDubboProvider.ServiceExecutionConfig customerCommandExecution =
+                serviceExecutionConfig(CustomerCommandService.class);
 
         PlainDubboProvider<NestedCatalogService> catalogProvider = null;
         PlainDubboProvider<CustomerQueryService> customerProvider = null;
+        PlainDubboProvider<CustomerCommandService> customerCommandProvider = null;
         try {
             catalogProvider = PlainDubboProvider.export(
                     NestedCatalogService.class,
@@ -64,7 +71,15 @@ public final class RestSampleDubboProviderApplication {
                     registration,
                     customerExecution
             );
+            customerCommandProvider = PlainDubboProvider.export(
+                    CustomerCommandService.class,
+                    customerCommandService,
+                    config,
+                    registration,
+                    customerCommandExecution
+            );
         } catch (Exception e) {
+            closeQuietly(customerCommandProvider);
             closeQuietly(customerProvider);
             closeQuietly(catalogProvider);
             registration.close();
@@ -75,7 +90,9 @@ public final class RestSampleDubboProviderApplication {
         CountDownLatch stop = new CountDownLatch(1);
         PlainDubboProvider<NestedCatalogService> finalCatalogProvider = catalogProvider;
         PlainDubboProvider<CustomerQueryService> finalCustomerProvider = customerProvider;
+        PlainDubboProvider<CustomerCommandService> finalCustomerCommandProvider = customerCommandProvider;
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            finalCustomerCommandProvider.close();
             finalCustomerProvider.close();
             finalCatalogProvider.close();
             registration.close();
@@ -85,10 +102,13 @@ public final class RestSampleDubboProviderApplication {
 
         System.out.println("[rest-sample-dubbo-provider] exported " + catalogProvider.url().toFullString());
         System.out.println("[rest-sample-dubbo-provider] exported " + customerProvider.url().toFullString());
+        System.out.println("[rest-sample-dubbo-provider] exported " + customerCommandProvider.url().toFullString());
         System.out.println("[rest-sample-dubbo-provider] execution limits "
                 + formatExecution(NestedCatalogService.class, catalogExecution)
                 + ", "
-                + formatExecution(CustomerQueryService.class, customerExecution));
+                + formatExecution(CustomerQueryService.class, customerExecution)
+                + ", "
+                + formatExecution(CustomerCommandService.class, customerCommandExecution));
         System.out.println("[rest-sample-dubbo-provider] registered at "
                 + config.registryAddress() + "/" + config.registryRoot());
         stop.await();

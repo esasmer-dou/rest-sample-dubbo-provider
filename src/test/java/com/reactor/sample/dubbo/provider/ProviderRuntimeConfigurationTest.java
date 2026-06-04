@@ -21,11 +21,17 @@ class ProviderRuntimeConfigurationTest {
         int hikariMaxPool = intValue(properties, "sample.db.maximum-pool-size");
         int customerServiceLimit = intValue(properties, "dubbo.provider.service.CustomerQueryService.max-concurrent");
         int customerMethodLimit = intValue(properties, "dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent");
+        int customerCommandLimit = intValue(properties, "dubbo.provider.service.CustomerCommandService.max-concurrent");
+        int createCommandLimit = intValue(properties, "dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent");
 
         assertTrue(customerServiceLimit <= hikariMaxPool,
                 "DB-backed service concurrency should not exceed Hikari max pool size");
         assertTrue(customerMethodLimit <= customerServiceLimit,
                 "Method override should be equal to or smaller than service concurrency");
+        assertTrue(customerCommandLimit <= hikariMaxPool,
+                "DB write command concurrency should not exceed Hikari max pool size");
+        assertTrue(createCommandLimit <= customerCommandLimit,
+                "Write method override should be equal to or smaller than command service concurrency");
         assertEquals("0", properties.getProperty("sample.db.minimum-idle"));
         assertEquals("3000", properties.getProperty("sample.db.connection-timeout-ms"));
     }

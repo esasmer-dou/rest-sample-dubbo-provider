@@ -18,6 +18,7 @@ Bu örnek şu konuları göstermek için hazırlandı:
 - Provider URL'i ZooKeeper'a nasıl register edilir.
 - Provider dependency seti nasıl açık ve sınırlı tutulur.
 - Rust-Java consumer'ın düşük overhead ile forward edebilmesi için provider nasıl JSON bytes döner.
+- POST/PATCH/DELETE REST use case'leri küçük Dubbo command method'larıyla nasıl desteklenir.
 - Spring olmadan PostgreSQL'e HikariCP ve ActiveJDBC ile nasıl bağlanılır.
 - Runtime class'lar ile record DTO'lar nasıl ayrılır.
 
@@ -96,7 +97,7 @@ Dubbo consumer
   -> JSON byte[]
 ```
 
-Provider tek büyük RPC yüzeyi yerine iki küçük interface expose eder:
+Provider tek büyük RPC yüzeyi yerine küçük ve cohesive interface'ler expose eder:
 
 ```java
 public interface NestedCatalogService {
@@ -105,6 +106,13 @@ public interface NestedCatalogService {
 
 public interface CustomerQueryService {
     byte[] getDatabaseCustomersJson();
+}
+
+public interface CustomerCommandService {
+    byte[] createCustomer(byte[] commandJson);
+    byte[] patchCustomerSegment(long customerId, byte[] commandJson);
+    byte[] patchCustomerStatus(long customerId, byte[] commandJson);
+    byte[] deleteCustomer(long customerId, byte[] commandJson);
 }
 ```
 
@@ -117,12 +125,13 @@ Interface ayrımı:
 |-----------|----------------|------------|
 | `NestedCatalogService` | `NestedCatalogServiceImpl` | Static nested catalog JSON. |
 | `CustomerQueryService` | `CustomerQueryServiceImpl` | HikariCP/ActiveJDBC üzerinden PostgreSQL-backed customer JSON. |
+| `CustomerCommandService` | `CustomerCommandServiceImpl` | Compact JSON command bytes ile POST/PATCH/DELETE tarzı DB command'leri. |
 
 BEST: interface'leri küçük ve cohesive tutmak. ACCEPTABLE: sample veya aynı bounded context içinde
 bir provider process'in aynı Dubbo portunda birden fazla interface export etmesi. ANTI-PATTERN:
 wire etmek kolay diye alakasız read/write operasyonlarını tek god interface içine koymak.
 
-Provider iki interface node'unu tek ZooKeeper session ile register eder. Her export için ayrı
+Provider tüm interface node'larını tek ZooKeeper session ile register eder. Her export için ayrı
 ZooKeeper client açmak çalışırdı, fakat gereksiz thread/session overhead üretirdi.
 
 ## Interface ve Method Bazlı Execution Limitleri
@@ -156,6 +165,8 @@ Varsayılan sample limitleri:
 | `NestedCatalogService` | `dubbo.provider.service.NestedCatalogService.max-concurrent` | `16` | Catalog JSON üretimini CPU/allocation açısından sınırlar. |
 | `CustomerQueryService` | `dubbo.provider.service.CustomerQueryService.max-concurrent` | `2` | `sample.db.maximum-pool-size=2` ile hizalıdır; DB pool queue büyümesini engeller. |
 | `CustomerQueryService.getDatabaseCustomersJson` | `dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent` | `1` | DB-backed method için method-level override örneğidir. |
+| `CustomerCommandService` | `dubbo.provider.service.CustomerCommandService.max-concurrent` | `2` | Write-side DB command concurrency Hikari pool ile hizalı kalır. |
+| `CustomerCommandService.*` write method'ları | `dubbo.provider.service.CustomerCommandService.method.<method>.max-concurrent` | `1` | Write örnekleri lokal sample davranışını öngörülebilir tutmak için method bazında serialized tutulur. |
 
 Simple name çakışması varsa fully qualified interface adı da kullanılabilir:
 
@@ -180,6 +191,92 @@ BEST: service limitini o interface arkasındaki gerçek darboğaza göre belirle
 Hikari max pool size veya daha düşük bir değerle başlamak doğru olur. CPU-heavy serialization
 servislerinde CPU kapasitesine göre başlayıp p99 load test ile doğrulayın. ANTI-PATTERN: tüm
 interface'lere büyük sayı verip overload'u DB pool, heap veya Netty thread'lerine bırakmak.
+
+## Provider Use Case Cookbook
+
+Bu örnekler REST consumer üzerinden çağrılır, fakat davranış provider içinde uygulanır. Bu ayrım
+bilinçlidir: REST process küçük kalır, provider DB access, mutation rule ve Hikari kapasitesinin
+sahibi olur.
+
+| Use case | Provider interface | Provider darboğazı | Başlangıç limiti |
+|----------|--------------------|--------------------|-----------------:|
+| Static/nested catalog read | `NestedCatalogService` | CPU/string generation | `16` |
+| PostgreSQL customer read | `CustomerQueryService` | Hikari/PostgreSQL | service `2`, method `1` |
+| Customer create/upsert | `CustomerCommandService.createCustomer` | Hikari/PostgreSQL unique key | service `2`, method `1` |
+| Segment/status patch | `CustomerCommandService.patchCustomer*` | Hikari/PostgreSQL update | service `2`, method `1` |
+| Customer delete | `CustomerCommandService.deleteCustomer` | Hikari/PostgreSQL delete/audit | service `2`, method `1` |
+
+### Use Case: Customer Create Command
+
+REST caller:
+
+```powershell
+curl -X POST http://127.0.0.1:8080/api/v1/customers `
+  -H "Content-Type: application/json" `
+  -d "{\"requestId\":\"req-1001\",\"customerNo\":\"CUST-9001\",\"fullName\":\"Zeynep Şahin\",\"segment\":\"pilot\",\"email\":\"zeynep.sahin@example.com\"}"
+```
+
+Provider contract:
+
+```java
+public interface CustomerCommandService {
+    byte[] createCustomer(byte[] commandJson);
+}
+```
+
+Provider implementation şekli:
+
+```java
+public byte[] createCustomer(byte[] commandJson) {
+    // Sadece provider'ın ihtiyaç duyduğu command field'larını parse edin.
+    // Consumer tarafında büyük DTO graph kurmayın.
+    SampleCustomer customer = repository.createCustomer(customerNo, fullName, segment, email);
+    return readyJsonBytes(customer);
+}
+```
+
+### Use Case: Customer Segment Patch
+
+```powershell
+curl -X PATCH http://127.0.0.1:8080/api/v1/customers/1/segment `
+  -H "Content-Type: application/json" `
+  -d "{\"requestId\":\"req-1002\",\"segment\":\"enterprise\"}"
+```
+
+Targeted değişiklikler için bu pattern'i kullanın. Her customer field'ını alan generic
+`PUT /customers/{id}` endpoint'inden genelde daha net ve daha ucuzdur.
+
+### Use Case: Customer Status Patch
+
+```powershell
+curl -X PATCH http://127.0.0.1:8080/api/v1/customers/1/status `
+  -H "Content-Type: application/json" `
+  -d "{\"requestId\":\"req-1003\",\"status\":\"passive\"}"
+```
+
+Domain'inizin anladığı lifecycle kelimeleri kullanın: `active`, `passive`, `blocked`,
+`pending-review`. Status değişimi side effect üretiyorsa idempotency ve audit handling provider'da
+kalmalıdır.
+
+### Use Case: Customer Delete
+
+```powershell
+curl -X DELETE http://127.0.0.1:8080/api/v1/customers/3 `
+  -H "Content-Type: application/json" `
+  -d "{\"requestId\":\"req-1004\",\"reason\":\"sample cleanup\"}"
+```
+
+Bu sample HTTP verb net görülsün diye hard delete yapar. Gerçek business sistemde audit, recovery
+ve downstream consistency önemliyse soft-delete/status change daha doğru olur.
+
+### Provider Kullanıcısı İçin Property/Profile Rehberi
+
+| Kullanıcı problemi | İlk değişiklik | Bunu yapmayın |
+|--------------------|----------------|---------------|
+| "Burst altında write 503 dönüyor" | `CustomerCommandService.max-concurrent` değerini sadece Hikari kapasitesine kadar artırın, sonra ölçün. | Hikari `2` iken provider method limitini `100` yapmayın. |
+| "DB yavaş" | `sample.db.connection-timeout-ms` biraz artırılabilir veya DB latency düzeltilir; consumer bounded kalır. | Yavaş DB'yi derin provider queue arkasına saklamayın. |
+| "Provider RSS yüksek" | `sample.db.minimum-idle=0`, Netty arena `1`, QoS/metrics/tracing kapalı kalsın. | Bu sample'da kullanılmayan Dubbo governance özelliklerini açmayın. |
+| "Daha güçlü write semantics lazım" | Provider'da idempotency/audit table ekleyin ve command JSON içindeki `requestId` değerini kullanın. | DB mutation provider'daysa idempotency'yi REST consumer'da çözmeyin. |
 
 ## Paket Yapısı
 
@@ -450,6 +547,8 @@ Runtime değerleri properties dosyasındadır. Eksik veya hatalı property start
 | `dubbo.provider.service.NestedCatalogService.max-concurrent` | Catalog provider method'ları için concurrent invocation limiti. |
 | `dubbo.provider.service.CustomerQueryService.max-concurrent` | DB-backed customer provider method'ları için concurrent invocation limiti. |
 | `dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent` | Customer DB method'u için method-level override limiti. |
+| `dubbo.provider.service.CustomerCommandService.max-concurrent` | Write-side customer command'leri için concurrent invocation limiti. |
+| `dubbo.provider.service.CustomerCommandService.method.*.max-concurrent` | Method-level write command override'ları. Hikari ile hizalı tutun. |
 | `sample.db.jdbc-url` | PostgreSQL JDBC URL. |
 | `sample.db.maximum-pool-size` | Hikari maximum pool size. |
 | `sample.db.minimum-idle` | Hikari minimum idle connection sayısı. `0` idle RSS'i düşük tutar. |

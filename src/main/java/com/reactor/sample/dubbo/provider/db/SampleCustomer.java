@@ -7,5 +7,8 @@ public record SampleCustomer(
         String customerNo,
         String fullName,
         String segment,
-        Instant createdAt
+        String email,
+        String status,
+        Instant createdAt,
+        Instant updatedAt
 ) {}

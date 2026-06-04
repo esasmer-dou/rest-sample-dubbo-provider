@@ -6,6 +6,8 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.javalite.activejdbc.Base;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -16,7 +18,7 @@ import java.util.Map;
 public final class PostgresCustomerRepository implements AutoCloseable {
 
     private static final String SELECT_CUSTOMERS = """
-            select id, customer_no, full_name, segment, created_at
+            select id, customer_no, full_name, segment, email, status, created_at, updated_at
             from sample_customers
             order by id
             limit 100
@@ -72,6 +74,57 @@ public final class PostgresCustomerRepository implements AutoCloseable {
         }
     }
 
+    public SampleCustomer createCustomer(String customerNo, String fullName, String segment, String email) {
+        ensureInitialized();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     insert into sample_customers (customer_no, full_name, segment, email, status)
+                     values (?, ?, ?, ?, 'active')
+                     on conflict (customer_no) do update set
+                       full_name = excluded.full_name,
+                       segment = excluded.segment,
+                       email = excluded.email,
+                       status = 'active',
+                       updated_at = now()
+                     returning id, customer_no, full_name, segment, email, status, created_at, updated_at
+                     """)) {
+            statement.setString(1, customerNo);
+            statement.setString(2, fullName);
+            statement.setString(3, segment);
+            statement.setString(4, email);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    return toCustomer(resultSet);
+                }
+                throw new IllegalStateException("Create customer returned no row");
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("Create customer failed", e);
+        }
+    }
+
+    public SampleCustomer updateSegment(long customerId, String segment) {
+        return updateSingleField(customerId, "segment", segment);
+    }
+
+    public SampleCustomer updateStatus(long customerId, String status) {
+        return updateSingleField(customerId, "status", status);
+    }
+
+    public boolean deleteCustomer(long customerId) {
+        ensureInitialized();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     delete from sample_customers
+                     where id = ?
+                     """)) {
+            statement.setLong(1, customerId);
+            return statement.executeUpdate() > 0;
+        } catch (Exception e) {
+            throw new IllegalStateException("Delete customer failed", e);
+        }
+    }
+
     @Override
     public void close() {
         dataSource.close();
@@ -93,15 +146,20 @@ public final class PostgresCustomerRepository implements AutoCloseable {
                           customer_no varchar(32) not null unique,
                           full_name varchar(128) not null,
                           segment varchar(32) not null,
+                          email varchar(160) not null default '',
+                          status varchar(32) not null default 'active',
                           created_at timestamptz not null default now()
                         )
                         """);
+                statement.executeUpdate("alter table sample_customers add column if not exists email varchar(160) not null default ''");
+                statement.executeUpdate("alter table sample_customers add column if not exists status varchar(32) not null default 'active'");
+                statement.executeUpdate("alter table sample_customers add column if not exists updated_at timestamptz not null default now()");
                 statement.executeUpdate("""
-                        insert into sample_customers (customer_no, full_name, segment)
+                        insert into sample_customers (customer_no, full_name, segment, email, status)
                         values
-                          ('CUST-1001', 'Mustafa Korkmaz', 'pilot'),
-                          ('CUST-1002', 'Ayse Demir', 'enterprise'),
-                          ('CUST-1003', 'Mehmet Celik', 'standard')
+                          ('CUST-1001', 'Mustafa Korkmaz', 'pilot', 'mustafa.korkmaz@example.com', 'active'),
+                          ('CUST-1002', 'Ayse Demir', 'enterprise', 'ayse.demir@example.com', 'active'),
+                          ('CUST-1003', 'Mehmet Celik', 'standard', 'mehmet.celik@example.com', 'passive')
                         on conflict (customer_no) do nothing
                         """);
                 initialized = true;
@@ -117,7 +175,46 @@ public final class PostgresCustomerRepository implements AutoCloseable {
                 string(row.get("customer_no")),
                 string(row.get("full_name")),
                 string(row.get("segment")),
-                instant(row.get("created_at"))
+                string(row.get("email")),
+                string(row.get("status")),
+                instant(row.get("created_at")),
+                instant(row.get("updated_at"))
+        );
+    }
+
+    private SampleCustomer updateSingleField(long customerId, String fieldName, String value) {
+        ensureInitialized();
+        String sql = """
+                update sample_customers
+                set %s = ?, updated_at = now()
+                where id = ?
+                returning id, customer_no, full_name, segment, email, status, created_at, updated_at
+                """.formatted(fieldName);
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, value);
+            statement.setLong(2, customerId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    return toCustomer(resultSet);
+                }
+                return null;
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("Update customer failed", e);
+        }
+    }
+
+    private static SampleCustomer toCustomer(ResultSet row) throws Exception {
+        return new SampleCustomer(
+                row.getLong("id"),
+                row.getString("customer_no"),
+                row.getString("full_name"),
+                row.getString("segment"),
+                row.getString("email"),
+                row.getString("status"),
+                row.getTimestamp("created_at").toInstant(),
+                row.getTimestamp("updated_at").toInstant()
         );
     }
 
