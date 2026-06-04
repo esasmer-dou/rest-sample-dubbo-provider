@@ -50,20 +50,22 @@ Provider her interface için ZooKeeper altında ayrı path'e register olur:
 /dubbo/com.reactor.rust.dubbo.sample.CustomerQueryService/providers
 ```
 
-## `rust-java-rest` 3.2.0 Bu Provider'ı Nasıl Etkiler?
+## `rust-java-rest` 3.2.1 Bu Provider'ı Nasıl Etkiler?
 
 Bu provider `rust-java-rest` bağımlılığı almaz; bu şekilde kalması doğrudur. Provider'ın görevi,
-`rest-sample-dubbo-consumer` uygulamasının v3.2 low-overhead response yolunu kullanabileceği küçük bir
+`rest-sample-dubbo-consumer` uygulamasının v3.2.x low-overhead response yolunu kullanabileceği küçük bir
 Dubbo kontratı expose etmektir.
 
-| Provider tercihi | v3.2 consumer üzerindeki etkisi |
+| Provider tercihi | v3.2.1 consumer üzerindeki etkisi |
 |------------------|--------------------------------|
 | UTF-8 JSON'u `byte[]` olarak dönmek | Consumer `RawResponse.json(bytes)` döner ve ikinci DTO graph kurmaz. |
 | Interface'leri küçük tutmak | Consumer timeout, backpressure ve metrics değerlerini RPC alanına göre tune edebilir. |
 | Method concurrency değerlerini bounded tutmak | Provider overload heap, DB pool veya Netty queue büyümesine dönüşmeden görünür olur. |
 | DB method limitlerini Hikari ile hizalamak | DB saturation derin queue yerine fail-fast verdiği için consumer p99 daha stabil kalır. |
 | Provider limitlerini consumer route admission ile eşlemek | Yavaş provider method'u consumer global JNI queue'yu dolduramaz. |
-| Pass-through response için büyük object graph'tan kaçınmak | v3.2 kazanımları Hessian materialization ve JSON reserialization ile silinmez. |
+| Pass-through response için büyük object graph'tan kaçınmak | v3.2.x kazanımları Hessian materialization ve JSON reserialization ile silinmez. |
+| Consumer'ı normal framework dependency'de tutmak | Consumer production-like RSS ölçümünde framework sample/demo class'larını taşımaz. |
+| Açık consumer property'lerini korumak | Consumer `rust-spring.properties` değerleri runtime profile default'ları tarafından ezilmez. |
 
 Provider UTF-8 JSON bytes yazıyor ve consumer JSON content type ile dönüyorsa Türkçe karakterler bu
 akışta güvenli taşınır. JSON üretirken platform-default encoding kullanmayın.
@@ -503,7 +505,7 @@ Bilinçli olarak dışarıda bırakılanlar:
 Not: Bazı Dubbo metrics/API sınıfları classpath'te kalır çünkü Dubbo server bytecode'u bunlara
 referans verir. Runtime'da metrics, tracing ve QoS properties ile kapalıdır.
 
-## v3.2 Consumer ile Çalıştırma Sırası
+## v3.2.1 Consumer ile Çalıştırma Sırası
 
 Lokal test için en temiz sıra:
 
@@ -511,7 +513,7 @@ Lokal test için en temiz sıra:
 1. ZooKeeper'ı başlatın.
 2. DB-backed endpoint'ler açıksa PostgreSQL'i başlatın.
 3. Bu provider'ı başlatın.
-4. rust-java-rest 3.2.0 kullanan rest-sample-dubbo-consumer'ı başlatın.
+4. rust-java-rest 3.2.1 kullanan rest-sample-dubbo-consumer'ı başlatın.
 5. Provider'ı doğrudan değil, consumer REST endpoint'lerini çağırarak test edin.
 ```
 
