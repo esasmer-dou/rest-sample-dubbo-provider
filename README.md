@@ -24,6 +24,108 @@ Use this sample when you want to understand:
 This is not a generic enterprise Dubbo provider template. It is a focused provider used to validate
 the Rust-Java REST Dubbo consumer path.
 
+## Start Here: Pick Your Provider Shape
+
+This provider has no `rust-java-rest` runtime profile because it is not a REST application. Its
+production behavior is controlled by plain provider properties: Dubbo export settings, ZooKeeper
+registration, HikariCP pool size, and per-interface/per-method concurrency limits.
+
+| Your scenario | Provider design | Key properties | Consumer impact |
+|---------------|-----------------|----------------|-----------------|
+| Read-heavy lookup/catalog | Return UTF-8 JSON `byte[]` from a small read interface | `dubbo.provider.service.NestedCatalogService.max-concurrent=16` | Consumer can use `RawResponse.json(bytes)` with no DTO graph |
+| DB-backed query | Use `CustomerQueryService` and keep DB pool small | `sample.db.maximum-pool-size=2`, method max-concurrent `1-2` | p99 is bounded by DB capacity instead of hidden provider queues |
+| Write command | Use compact JSON command bytes | command method max-concurrent `1`, `sample.db.auto-commit=true` | Consumer can keep retries off and fail fast on saturation |
+| Kubernetes discovery | Register every interface in ZooKeeper | `reactor.dubbo.registry-address=zookeeper://...:2181` | Consumer `zookeeper-discovery` can reconnect after provider restart |
+| Local/static test | Bind `127.0.0.1:20880` or container DNS | `dubbo.provider.host`, `dubbo.provider.bind-host`, `dubbo.provider.port` | Consumer static provider list can point directly to this provider |
+
+BEST: keep provider interfaces small and return ready JSON bytes for pass-through read APIs.
+ACCEPTABLE: return records only when the consumer must make typed business decisions. ANTI-PATTERN:
+return a large nested object graph when the consumer immediately serializes it back to JSON.
+
+## Production Recipes
+
+### Recipe 1: Provider For Kubernetes ZooKeeper Discovery
+
+Use this when the consumer runs with `zookeeper-discovery` and providers can be restarted or moved.
+
+```properties
+dubbo.provider.application-name=rest-sample-dubbo-provider
+dubbo.provider.host=provider-pod-ip-or-headless-service-dns
+dubbo.provider.bind-host=0.0.0.0
+dubbo.provider.port=20880
+reactor.dubbo.registry-address=zookeeper://zookeeper-client.platform.svc.cluster.local:2181
+reactor.dubbo.registry-root=dubbo
+```
+
+Effect:
+
+| Property | What it does | Production note |
+|----------|--------------|-----------------|
+| `dubbo.provider.host` | Address written into ZooKeeper provider URL | Must be reachable by consumer pods. Prefer per-pod IP or headless-service DNS for real provider discovery. Do not publish `127.0.0.1` in Kubernetes. |
+| `dubbo.provider.bind-host` | Local interface the provider listens on | Use `0.0.0.0` in containers. |
+| `reactor.dubbo.registry-address` | ZooKeeper registry endpoint | Use Kubernetes DNS, not a local desktop address. |
+| `reactor.dubbo.registry-root` | Registry namespace | Keep it aligned with consumer `reactor.dubbo.registry-root`. |
+
+### Recipe 2: DB-Backed Query With HikariCP
+
+Use this when the provider reads PostgreSQL and returns ready JSON bytes to the consumer.
+
+```properties
+sample.db.jdbc-url=jdbc:postgresql://postgresql.platform.svc.cluster.local:5432/reactor_sample
+sample.db.username=reactor
+sample.db.password=${DB_PASSWORD}
+sample.db.maximum-pool-size=2
+sample.db.minimum-idle=0
+sample.db.connection-timeout-ms=3000
+sample.db.validation-timeout-ms=1000
+dubbo.provider.service.CustomerQueryService.max-concurrent=2
+dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent=1
+```
+
+Effect:
+
+| Setting | What it controls | Why the sample keeps it small |
+|---------|------------------|-------------------------------|
+| `sample.db.maximum-pool-size` | Physical PostgreSQL connections | DB is usually the bottleneck; oversized pools increase memory and DB contention. |
+| `sample.db.minimum-idle=0` | Idle DB connections retained | Good for low-RSS samples; set higher only if cold DB acquisition hurts p99. |
+| `CustomerQueryService.max-concurrent` | Provider-side query bulkhead | Keeps provider queues aligned with DB capacity. |
+| Method override | Per-method hard cap | Protects one expensive method without lowering every method on the interface. |
+
+### Recipe 3: Write Commands Without Queue Growth
+
+Use this when POST/PATCH/DELETE requests are translated into provider command methods.
+
+```properties
+dubbo.provider.service.CustomerCommandService.max-concurrent=2
+dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent=1
+dubbo.provider.service.CustomerCommandService.method.patchCustomerSegment.max-concurrent=1
+dubbo.provider.service.CustomerCommandService.method.patchCustomerStatus.max-concurrent=1
+dubbo.provider.service.CustomerCommandService.method.deleteCustomer.max-concurrent=1
+sample.db.maximum-pool-size=2
+```
+
+Effect: command methods fail fast when the provider is saturated instead of building an unbounded
+queue. This is safer for memory and tail latency. If callers require guaranteed command completion,
+put a durable queue/workflow in front of the provider; do not hide it inside Dubbo request queues.
+
+### Recipe 4: Local Docker Test
+
+Use this for developer machines where ZooKeeper and PostgreSQL run as containers.
+
+```powershell
+docker run -d --name rust-java-dubbo-zookeeper -p 2181:2181 zookeeper:3.7.2
+docker run -d --name rest-sample-postgres `
+  -e POSTGRES_DB=reactor_sample `
+  -e POSTGRES_USER=reactor `
+  -e POSTGRES_PASSWORD=reactor `
+  -p 15432:5432 postgres:16-alpine
+
+mvn -q exec:java
+```
+
+Effect: the provider publishes local `dubbo://127.0.0.1:20880` URLs by default. In Docker networks or
+Kubernetes, change the published host to a reachable service/container DNS name.
+
 ## Relationship With Other Projects
 
 This provider is designed to be used by:

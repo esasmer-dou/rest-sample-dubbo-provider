@@ -25,6 +25,109 @@ Bu örnek şu konuları göstermek için hazırlandı:
 Bu repo genel amaçlı enterprise Dubbo provider template'i değildir. Rust-Java REST Dubbo consumer
 yolunu doğrulamak için odaklı bir provider örneğidir.
 
+## Buradan Başlayın: Provider Şeklinizi Seçin
+
+Bu provider bir REST uygulaması olmadığı için `rust-java-rest` runtime profile'ı kullanmaz.
+Production davranışı plain provider property'leriyle belirlenir: Dubbo export ayarları, ZooKeeper
+registration, HikariCP pool size ve interface/method bazlı concurrency limitleri.
+
+| Senaryonuz | Provider tasarımı | Ana property'ler | Consumer etkisi |
+|------------|-------------------|------------------|-----------------|
+| Read-heavy lookup/catalog | Küçük read interface UTF-8 JSON `byte[]` döner | `dubbo.provider.service.NestedCatalogService.max-concurrent=16` | Consumer `RawResponse.json(bytes)` ile DTO graph kurmadan döner |
+| DB-backed query | `CustomerQueryService` kullanılır, DB pool küçük tutulur | `sample.db.maximum-pool-size=2`, method max-concurrent `1-2` | p99 gizli provider queue yerine DB kapasitesiyle sınırlanır |
+| Write command | Compact JSON command bytes kullanılır | command method max-concurrent `1`, `sample.db.auto-commit=true` | Consumer retry kapalı ve saturation anında fail-fast çalışabilir |
+| Kubernetes discovery | Her interface ZooKeeper'a register edilir | `reactor.dubbo.registry-address=zookeeper://...:2181` | Consumer `zookeeper-discovery` provider restart sonrası reconnect edebilir |
+| Lokal/static test | `127.0.0.1:20880` veya container DNS bind edilir | `dubbo.provider.host`, `dubbo.provider.bind-host`, `dubbo.provider.port` | Consumer static provider listesi doğrudan bu provider'a gider |
+
+BEST: pass-through read API'lerde küçük interface ve hazır JSON bytes dönmek. ACCEPTABLE: consumer
+typed business karar verecekse record dönmek. ANTI-PATTERN: consumer hemen tekrar JSON'a çevireceği
+büyük nested object graph dönmek.
+
+## Production Reçeteleri
+
+### Reçete 1: Kubernetes ZooKeeper Discovery İçin Provider
+
+Consumer `zookeeper-discovery` ile çalışıyorsa ve provider restart/taşınma yaşayabiliyorsa bu yolu
+kullanın.
+
+```properties
+dubbo.provider.application-name=rest-sample-dubbo-provider
+dubbo.provider.host=provider-pod-ip-or-headless-service-dns
+dubbo.provider.bind-host=0.0.0.0
+dubbo.provider.port=20880
+reactor.dubbo.registry-address=zookeeper://zookeeper-client.platform.svc.cluster.local:2181
+reactor.dubbo.registry-root=dubbo
+```
+
+Etkisi:
+
+| Property | Ne yapar? | Production notu |
+|----------|-----------|-----------------|
+| `dubbo.provider.host` | ZooKeeper provider URL içine yazılan adres | Consumer pod'ları tarafından erişilebilir olmalı. Gerçek provider discovery için per-pod IP veya headless-service DNS tercih edin. Kubernetes'te `127.0.0.1` publish etmeyin. |
+| `dubbo.provider.bind-host` | Provider'ın dinlediği local interface | Container içinde `0.0.0.0` kullanın. |
+| `reactor.dubbo.registry-address` | ZooKeeper registry endpoint | Lokal desktop adresi değil Kubernetes DNS kullanın. |
+| `reactor.dubbo.registry-root` | Registry namespace | Consumer `reactor.dubbo.registry-root` ile aynı olmalı. |
+
+### Reçete 2: HikariCP İle DB-Backed Query
+
+Provider PostgreSQL okuyor ve consumer'a hazır JSON bytes dönecekse bunu kullanın.
+
+```properties
+sample.db.jdbc-url=jdbc:postgresql://postgresql.platform.svc.cluster.local:5432/reactor_sample
+sample.db.username=reactor
+sample.db.password=${DB_PASSWORD}
+sample.db.maximum-pool-size=2
+sample.db.minimum-idle=0
+sample.db.connection-timeout-ms=3000
+sample.db.validation-timeout-ms=1000
+dubbo.provider.service.CustomerQueryService.max-concurrent=2
+dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent=1
+```
+
+Etkisi:
+
+| Ayar | Neyi kontrol eder? | Sample neden küçük tutuyor? |
+|------|--------------------|-----------------------------|
+| `sample.db.maximum-pool-size` | Fiziksel PostgreSQL connection sayısı | Darboğaz çoğu zaman DB'dir; büyük pool memory ve DB contention artırır. |
+| `sample.db.minimum-idle=0` | Idle tutulan DB connection sayısı | Low-RSS için iyidir; cold DB acquisition p99 bozarsa artırın. |
+| `CustomerQueryService.max-concurrent` | Provider query bulkhead'i | Provider queue değerini DB kapasitesiyle hizalar. |
+| Method override | Method bazlı hard cap | Pahalı tek method'u interface'in tamamını düşürmeden korur. |
+
+### Reçete 3: Queue Büyütmeden Write Command
+
+POST/PATCH/DELETE istekleri provider command method'larına çevriliyorsa bunu kullanın.
+
+```properties
+dubbo.provider.service.CustomerCommandService.max-concurrent=2
+dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent=1
+dubbo.provider.service.CustomerCommandService.method.patchCustomerSegment.max-concurrent=1
+dubbo.provider.service.CustomerCommandService.method.patchCustomerStatus.max-concurrent=1
+dubbo.provider.service.CustomerCommandService.method.deleteCustomer.max-concurrent=1
+sample.db.maximum-pool-size=2
+```
+
+Etkisi: command method'ları provider saturation anında unbounded queue büyütmek yerine fail-fast
+davranır. Memory ve tail latency açısından daha güvenlidir. Caller mutlaka tamamlanma garantisi
+istiyorsa provider içine gizli queue koymayın; önüne durable queue/workflow koyun.
+
+### Reçete 4: Lokal Docker Testi
+
+Geliştirici makinesinde ZooKeeper ve PostgreSQL container olarak çalışıyorsa bunu kullanın.
+
+```powershell
+docker run -d --name rust-java-dubbo-zookeeper -p 2181:2181 zookeeper:3.7.2
+docker run -d --name rest-sample-postgres `
+  -e POSTGRES_DB=reactor_sample `
+  -e POSTGRES_USER=reactor `
+  -e POSTGRES_PASSWORD=reactor `
+  -p 15432:5432 postgres:16-alpine
+
+mvn -q exec:java
+```
+
+Etkisi: provider default olarak lokal `dubbo://127.0.0.1:20880` URL publish eder. Docker network veya
+Kubernetes'te published host değerini erişilebilir service/container DNS adına çevirin.
+
 ## Diğer Projelerle İlişkisi
 
 Bu provider şu consumer repo tarafından kullanılır:
