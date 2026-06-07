@@ -49,13 +49,13 @@ The provider registers each interface under its own ZooKeeper path:
 /dubbo/com.reactor.rust.dubbo.sample.CustomerQueryService/providers
 ```
 
-## How `rust-java-rest` 3.2.1 Affects This Provider
+## How `rust-java-rest` 3.2.2 Affects This Provider
 
 This provider does not depend on `rust-java-rest`, and it should stay that way. Its job is to expose
 a small Dubbo contract that lets the `rest-sample-dubbo-consumer` use the v3.2.x low-overhead response
 path.
 
-| Provider choice | Effect on the v3.2.1 consumer |
+| Provider choice | Effect on the v3.2.2 consumer |
 |-----------------|----------------------------|
 | Return UTF-8 JSON as `byte[]` | Consumer can return `RawResponse.json(bytes)` and avoid a second DTO graph. |
 | Keep interfaces small | Consumer can tune timeouts, backpressure, and metrics per RPC area. |
@@ -65,6 +65,8 @@ path.
 | Avoid huge object graphs for pass-through responses | v3.2.x improvements are preserved instead of being erased by Hessian materialization and JSON reserialization. |
 | Keep consumer on normal framework dependency | The consumer avoids framework sample/demo classes in production-like RSS measurements. |
 | Respect explicit consumer properties | Consumer `rust-spring.properties` values are not overwritten by runtime profile defaults. |
+| Keep benchmark-only routes out of production | Consumer route diagnostics can prove provider-facing production routes are not polluted by legacy comparison routes. |
+| Measure anon with the minimal app | Consumer pod sizing can separate heap, class metadata, JIT, direct buffers, Rust-accounted memory, and residual anon. |
 
 Turkish characters are safe in this flow when the provider writes UTF-8 JSON bytes and the consumer
 returns them with JSON content type. Do not build JSON through platform-default encodings.
@@ -72,6 +74,23 @@ returns them with JSON content type. Do not build JSON through platform-default 
 BEST: return `byte[]` for read-heavy pass-through JSON. ACCEPTABLE: return records when the consumer
 must make typed business decisions. ANTI-PATTERN: return a large nested object graph only for the
 consumer to convert it back to JSON.
+
+### Production Dependency Boundary
+
+This provider intentionally does not depend on `rust-java-rest`. The REST framework runs in the
+consumer process, not in the provider process.
+
+For memory and performance analysis, keep these scopes separate:
+
+| Component | What it should contain | What it should not contain |
+|-----------|------------------------|----------------------------|
+| Provider | Plain Java Dubbo provider, HikariCP/ActiveJDBC if DB access is needed | `rust-java-rest` runtime |
+| Consumer | Normal `rust-java-rest` dependency and `java-rust-dubbo` adapter | Framework `rust-java-rest-*-sample.jar` |
+| Framework sample jar | Bundled demo/benchmark routes | Provider or consumer pod sizing evidence |
+
+The `rust-java-rest` `3.2.2` normal jar and `core-runtime` jar exclude framework sample/benchmark
+packages. That helps the consumer stay production-like, but it does not change this provider's class
+path because the provider never consumes the framework artifact.
 
 ### How To Align Provider Limits With The Consumer
 
@@ -503,7 +522,7 @@ Intentionally excluded:
 Note: some Dubbo metrics/API classes remain on the classpath because Dubbo server bytecode references
 them. Runtime metrics, tracing, and QoS are disabled by properties.
 
-## Run Order With the v3.2.1 Consumer
+## Run Order With the v3.2.2 Consumer
 
 Use this order for the cleanest local test:
 
@@ -511,7 +530,7 @@ Use this order for the cleanest local test:
 1. Start ZooKeeper.
 2. Start PostgreSQL if DB-backed endpoints are enabled.
 3. Start this provider.
-4. Start rest-sample-dubbo-consumer on rust-java-rest 3.2.1.
+4. Start rest-sample-dubbo-consumer on rust-java-rest 3.2.2.
 5. Call the consumer REST endpoints, not the provider directly.
 ```
 

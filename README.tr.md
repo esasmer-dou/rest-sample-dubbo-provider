@@ -50,13 +50,13 @@ Provider her interface için ZooKeeper altında ayrı path'e register olur:
 /dubbo/com.reactor.rust.dubbo.sample.CustomerQueryService/providers
 ```
 
-## `rust-java-rest` 3.2.1 Bu Provider'ı Nasıl Etkiler?
+## `rust-java-rest` 3.2.2 Bu Provider'ı Nasıl Etkiler?
 
 Bu provider `rust-java-rest` bağımlılığı almaz; bu şekilde kalması doğrudur. Provider'ın görevi,
 `rest-sample-dubbo-consumer` uygulamasının v3.2.x low-overhead response yolunu kullanabileceği küçük bir
 Dubbo kontratı expose etmektir.
 
-| Provider tercihi | v3.2.1 consumer üzerindeki etkisi |
+| Provider tercihi | v3.2.2 consumer üzerindeki etkisi |
 |------------------|--------------------------------|
 | UTF-8 JSON'u `byte[]` olarak dönmek | Consumer `RawResponse.json(bytes)` döner ve ikinci DTO graph kurmaz. |
 | Interface'leri küçük tutmak | Consumer timeout, backpressure ve metrics değerlerini RPC alanına göre tune edebilir. |
@@ -66,6 +66,8 @@ Dubbo kontratı expose etmektir.
 | Pass-through response için büyük object graph'tan kaçınmak | v3.2.x kazanımları Hessian materialization ve JSON reserialization ile silinmez. |
 | Consumer'ı normal framework dependency'de tutmak | Consumer production-like RSS ölçümünde framework sample/demo class'larını taşımaz. |
 | Açık consumer property'lerini korumak | Consumer `rust-spring.properties` değerleri runtime profile default'ları tarafından ezilmez. |
+| Benchmark-only route'ları production'dan ayırmak | Consumer diagnostics provider-facing route'ların legacy comparison route'lar ile kirlenmediğini gösterebilir. |
+| Anon memory'yi minimal app ile ölçmek | Consumer pod sizing heap, class metadata, JIT, direct buffer, Rust-accounted memory ve residual anon olarak ayrılır. |
 
 Provider UTF-8 JSON bytes yazıyor ve consumer JSON content type ile dönüyorsa Türkçe karakterler bu
 akışta güvenli taşınır. JSON üretirken platform-default encoding kullanmayın.
@@ -73,6 +75,23 @@ akışta güvenli taşınır. JSON üretirken platform-default encoding kullanma
 BEST: read-heavy pass-through JSON için `byte[]` dönmek. ACCEPTABLE: consumer typed business karar
 verecekse record dönmek. ANTI-PATTERN: consumer hemen tekrar JSON'a çevirecekse büyük nested object
 graph dönmek.
+
+### Production Dependency Sınırı
+
+Bu provider bilinçli olarak `rust-java-rest` dependency'si almaz. REST framework consumer process
+içinde çalışır; provider process içinde değil.
+
+Memory ve performance analizi yaparken scope'ları ayrı tutun:
+
+| Component | Ne içermeli? | Ne içermemeli? |
+|-----------|--------------|----------------|
+| Provider | Plain Java Dubbo provider, gerekiyorsa HikariCP/ActiveJDBC | `rust-java-rest` runtime |
+| Consumer | Normal `rust-java-rest` dependency ve `java-rust-dubbo` adapter | Framework `rust-java-rest-*-sample.jar` |
+| Framework sample jar | Bundled demo/benchmark route'ları | Provider veya consumer pod sizing kanıtı |
+
+`rust-java-rest` `3.2.2` normal jar ve `core-runtime` jar framework sample/benchmark package'larını
+içermez. Bu consumer'ın production-like kalmasına yardım eder; fakat provider classpath'ini
+değiştirmez çünkü provider zaten framework artifact'ini kullanmaz.
 
 ### Provider Limitlerini Consumer İle Nasıl Hizalarsınız?
 
@@ -505,7 +524,7 @@ Bilinçli olarak dışarıda bırakılanlar:
 Not: Bazı Dubbo metrics/API sınıfları classpath'te kalır çünkü Dubbo server bytecode'u bunlara
 referans verir. Runtime'da metrics, tracing ve QoS properties ile kapalıdır.
 
-## v3.2.1 Consumer ile Çalıştırma Sırası
+## v3.2.2 Consumer ile Çalıştırma Sırası
 
 Lokal test için en temiz sıra:
 
@@ -513,7 +532,7 @@ Lokal test için en temiz sıra:
 1. ZooKeeper'ı başlatın.
 2. DB-backed endpoint'ler açıksa PostgreSQL'i başlatın.
 3. Bu provider'ı başlatın.
-4. rust-java-rest 3.2.1 kullanan rest-sample-dubbo-consumer'ı başlatın.
+4. rust-java-rest 3.2.2 kullanan rest-sample-dubbo-consumer'ı başlatın.
 5. Provider'ı doğrudan değil, consumer REST endpoint'lerini çağırarak test edin.
 ```
 
