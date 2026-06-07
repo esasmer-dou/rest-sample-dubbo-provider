@@ -39,9 +39,9 @@ registration, HikariCP pool size ve interface/method bazlı concurrency limitler
 | Kubernetes discovery | Her interface ZooKeeper'a register edilir | `reactor.dubbo.registry-address=zookeeper://...:2181` | Consumer `zookeeper-discovery` provider restart sonrası reconnect edebilir |
 | Lokal/static test | `127.0.0.1:20880` veya container DNS bind edilir | `dubbo.provider.host`, `dubbo.provider.bind-host`, `dubbo.provider.port` | Consumer static provider listesi doğrudan bu provider'a gider |
 
-BEST: pass-through read API'lerde küçük interface ve hazır JSON bytes dönmek. ACCEPTABLE: consumer
-typed business karar verecekse record dönmek. ANTI-PATTERN: consumer hemen tekrar JSON'a çevireceği
-büyük nested object graph dönmek.
+Önerilen başlangıç: pass-through read API'lerde küçük interface ve hazır JSON bytes dönmek. Consumer
+typed business karar verecekse record dönmek de uygundur. Consumer'ın hemen tekrar JSON'a çevireceği
+büyük nested object graph dönmekten kaçının.
 
 ## Production Reçeteleri
 
@@ -127,6 +127,110 @@ mvn -q exec:java
 
 Etkisi: provider default olarak lokal `dubbo://127.0.0.1:20880` URL publish eder. Docker network veya
 Kubernetes'te published host değerini erişilebilir service/container DNS adına çevirin.
+
+### Reçete 5: Read-Heavy Precomputed Catalog
+
+Catalog verisi nadiren değişiyorsa ve consumer sadece REST JSON olarak expose edecekse bunu
+kullanın.
+
+```java
+public final class NestedCatalogServiceImpl implements NestedCatalogService {
+    private final byte[] currentCatalogJson;
+
+    public NestedCatalogServiceImpl() {
+        this.currentCatalogJson = buildCatalogJson().getBytes(StandardCharsets.UTF_8);
+    }
+
+    @Override
+    public byte[] getNestedCatalogJson() {
+        return currentCatalogJson;
+    }
+}
+```
+
+```properties
+dubbo.provider.service.NestedCatalogService.max-concurrent=32
+```
+
+Etkisi: provider her çağrıda aynı JSON'u yeniden üretmez; consumer bu bytes'ı
+`RawResponse.json(bytes)` ile forward eder. Catalog değişiyorsa bu byte array'i timer, event veya
+admin operation ile açık bir şekilde yenileyin.
+
+### Reçete 6: Ayrı Kapasiteye Sahip Birden Fazla Interface
+
+Tek provider process hem ucuz read hem DB/write operasyonları expose ediyorsa bunu kullanın.
+
+```properties
+dubbo.provider.service.NestedCatalogService.max-concurrent=32
+dubbo.provider.service.CustomerQueryService.max-concurrent=2
+dubbo.provider.service.CustomerCommandService.max-concurrent=2
+dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent=1
+```
+
+Etkisi: yoğun bir DB/write method'u ucuz read method'larının bütün provider execution bütçesini
+tüketmez. Bu ayrımı interface tasarımında görünür tutun; consumer route admission ayarlarını da daha
+kolay tune edersiniz.
+
+### Reçete 7: Provider Rolling Restart
+
+Provider pod'ları deployment rollout veya node hareketiyle restart oluyorsa bunu kullanın.
+
+```properties
+dubbo.provider.bind-host=0.0.0.0
+dubbo.provider.host=provider-pod-ip-or-headless-service-dns
+reactor.dubbo.registry-address=zookeeper://zookeeper-client.platform.svc.cluster.local:2181
+reactor.dubbo.registry-root=dubbo
+```
+
+Etkisi: her provider ZooKeeper'a ephemeral node register eder. Pod durduğunda ZooKeeper session
+expire sonrası node'u kaldırır. Pod tekrar başladığında erişilebilir yeni adresi register eder.
+Kaybolan provider'ın uzun request stall üretmemesi için consumer `REACTOR_DUBBO_TIMEOUT_MS` bounded
+kalmalıdır.
+
+### Reçete 8: Database'den REST'e Türkçe Karakterler
+
+Database değerlerinde Türkçe karakter veya non-ASCII metin varsa bunu kullanın.
+
+```java
+byte[] json = """
+        {"city":"İstanbul","district":"Şişli","customer":"Mustafa Korkmaz"}
+        """.getBytes(StandardCharsets.UTF_8);
+return json;
+```
+
+Etkisi: provider encoding'i bir kez doğru yapar, consumer aynı UTF-8 bytes değerini forward eder.
+`String#getBytes()` çağrısını charset vermeden kullanmayın.
+
+### Reçete 9: DB Throughput'u Dikkatli Artırmak
+
+Sadece DB pool wait veya provider-side reject görüyorsanız ve database tarafında boş CPU varsa bunu
+kullanın.
+
+```properties
+sample.db.maximum-pool-size=4
+sample.db.minimum-idle=1
+dubbo.provider.service.CustomerQueryService.max-concurrent=4
+dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent=4
+```
+
+Etkisi: daha fazla DB-backed çağrı aynı anda çalışabilir. Memory, PostgreSQL connection sayısı ve DB
+CPU kullanımı da artar. Consumer DB route admission değerini aynı anda tune edin; aksi halde consumer
+provider/database'in bitirebileceğinden fazla iş gönderebilir.
+
+### Reçete 10: Production Schema Management Sınırı
+
+Sample lokal demo için schema initialize edebilir. Production'da migration hot provider process
+dışında yürütülmelidir.
+
+```properties
+sample.db.schema-init=false
+sample.db.warmup=true
+sample.db.initialization-fail-timeout-ms=3000
+```
+
+Etkisi: her provider pod startup'ta schema DDL çalıştırmaz. Schema migration'ı deployment job,
+Flyway/Liquibase adımı veya platform migration pipeline içinde tutun. Provider startup sadece gerekli
+tabloların erişilebilir olduğunu doğrulamalıdır.
 
 ## Diğer Projelerle İlişkisi
 

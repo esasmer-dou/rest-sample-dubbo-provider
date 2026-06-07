@@ -38,9 +38,10 @@ registration, HikariCP pool size, and per-interface/per-method concurrency limit
 | Kubernetes discovery | Register every interface in ZooKeeper | `reactor.dubbo.registry-address=zookeeper://...:2181` | Consumer `zookeeper-discovery` can reconnect after provider restart |
 | Local/static test | Bind `127.0.0.1:20880` or container DNS | `dubbo.provider.host`, `dubbo.provider.bind-host`, `dubbo.provider.port` | Consumer static provider list can point directly to this provider |
 
-BEST: keep provider interfaces small and return ready JSON bytes for pass-through read APIs.
-ACCEPTABLE: return records only when the consumer must make typed business decisions. ANTI-PATTERN:
-return a large nested object graph when the consumer immediately serializes it back to JSON.
+Recommended starting point: keep provider interfaces small and return ready JSON bytes for
+pass-through read APIs. Returning records is still fine when the consumer must make typed business
+decisions. Avoid returning a large nested object graph when the consumer immediately serializes it
+back to JSON.
 
 ## Production Recipes
 
@@ -125,6 +126,108 @@ mvn -q exec:java
 
 Effect: the provider publishes local `dubbo://127.0.0.1:20880` URLs by default. In Docker networks or
 Kubernetes, change the published host to a reachable service/container DNS name.
+
+### Recipe 5: Read-Heavy Precomputed Catalog
+
+Use this when catalog data changes rarely and the consumer only needs to expose it as REST JSON.
+
+```java
+public final class NestedCatalogServiceImpl implements NestedCatalogService {
+    private final byte[] currentCatalogJson;
+
+    public NestedCatalogServiceImpl() {
+        this.currentCatalogJson = buildCatalogJson().getBytes(StandardCharsets.UTF_8);
+    }
+
+    @Override
+    public byte[] getNestedCatalogJson() {
+        return currentCatalogJson;
+    }
+}
+```
+
+```properties
+dubbo.provider.service.NestedCatalogService.max-concurrent=32
+```
+
+Effect: the provider does not rebuild the same JSON on every call, and the consumer can forward the
+bytes with `RawResponse.json(bytes)`. If the catalog changes, refresh this byte array through a clear
+timer, event, or admin operation.
+
+### Recipe 6: Multiple Interfaces With Separate Capacity
+
+Use this when one provider process exposes both cheap reads and DB/write operations.
+
+```properties
+dubbo.provider.service.NestedCatalogService.max-concurrent=32
+dubbo.provider.service.CustomerQueryService.max-concurrent=2
+dubbo.provider.service.CustomerCommandService.max-concurrent=2
+dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent=1
+```
+
+Effect: a busy DB/write method does not consume the whole provider execution budget for cheap read
+methods. Keep the split visible in the interface design; it makes consumer route admission easier to
+tune.
+
+### Recipe 7: Provider Rolling Restart
+
+Use this when provider pods are restarted by deployment rollout or node movement.
+
+```properties
+dubbo.provider.bind-host=0.0.0.0
+dubbo.provider.host=provider-pod-ip-or-headless-service-dns
+reactor.dubbo.registry-address=zookeeper://zookeeper-client.platform.svc.cluster.local:2181
+reactor.dubbo.registry-root=dubbo
+```
+
+Effect: each provider registers an ephemeral ZooKeeper node. When the pod stops, ZooKeeper removes
+the node after session expiry. When the pod starts again, it registers the new reachable address.
+Keep the consumer `REACTOR_DUBBO_TIMEOUT_MS` bounded so a disappearing provider does not create long
+request stalls.
+
+### Recipe 8: Turkish Characters From Database To REST
+
+Use this when database values include Turkish characters or any non-ASCII text.
+
+```java
+byte[] json = """
+        {"city":"İstanbul","district":"Şişli","customer":"Mustafa Korkmaz"}
+        """.getBytes(StandardCharsets.UTF_8);
+return json;
+```
+
+Effect: the provider controls encoding once, and the consumer forwards the same UTF-8 bytes. Avoid
+`String#getBytes()` without an explicit charset.
+
+### Recipe 9: Raise DB Throughput Carefully
+
+Use this only after you see DB pool wait or provider-side rejects and the database has spare CPU.
+
+```properties
+sample.db.maximum-pool-size=4
+sample.db.minimum-idle=1
+dubbo.provider.service.CustomerQueryService.max-concurrent=4
+dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent=4
+```
+
+Effect: more DB-backed calls can run at the same time. Memory, PostgreSQL connection count, and DB
+CPU also increase. Tune the consumer DB route admission at the same time; otherwise the consumer can
+send more work than the provider/database can finish.
+
+### Recipe 10: Production Schema Management Boundary
+
+The sample can initialize schema for local demos. In production, prefer migrations outside this hot
+provider process.
+
+```properties
+sample.db.schema-init=false
+sample.db.warmup=true
+sample.db.initialization-fail-timeout-ms=3000
+```
+
+Effect: startup does not run schema DDL inside every provider pod. Keep schema migration in a
+deployment job, Flyway/Liquibase step, or platform migration pipeline. Provider startup should only
+verify that required tables are reachable.
 
 ## Relationship With Other Projects
 
