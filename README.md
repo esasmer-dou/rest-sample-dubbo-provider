@@ -30,15 +30,47 @@ This provider has no `rust-java-rest` runtime profile because it is not a REST a
 production behavior is controlled by plain provider properties: Dubbo export settings, ZooKeeper
 registration, HikariCP pool size, and per-interface/per-method concurrency limits.
 
-| Your scenario | Provider design | Key properties | Consumer impact |
-|---------------|-----------------|----------------|-----------------|
-| Read-heavy lookup/catalog | Return UTF-8 JSON `byte[]` from a small read interface | `dubbo.provider.service.NestedCatalogService.max-concurrent=16` | Consumer can use `RawResponse.json(bytes)` with no DTO graph |
-| Typed lookup or small page | Return `record`, `String`, primitive, `List<record>`, or `Map<String,String>` from the provider interface | Method max-concurrent `4-16`, strict result limit | Consumer can make typed business decisions, but pays Hessian/object allocation |
-| DB-backed query | Use `CustomerQueryService` and keep DB pool small | `sample.db.maximum-pool-size=2`, method max-concurrent `1-2` | p99 is bounded by DB capacity instead of hidden provider queues |
-| Write command | Use compact JSON command bytes | command method max-concurrent `1`, `sample.db.auto-commit=true` | Consumer can keep retries off and fail fast on saturation |
-| Typed command | Use `CreateCustomerCommand -> CustomerMutationResult` records | command method max-concurrent `1`, Hikari pool aligned | Cleaner business contract with more allocation than byte pass-through |
-| Kubernetes discovery | Register every interface in ZooKeeper | `reactor.dubbo.registry-address=zookeeper://...:2181` | Consumer `zookeeper-discovery` can reconnect after provider restart |
-| Local/static test | Bind `127.0.0.1:20880` or container DNS | `dubbo.provider.host`, `dubbo.provider.bind-host`, `dubbo.provider.port` | Consumer static provider list can point directly to this provider |
+**Read-heavy lookup/catalog**
+
+- Provider design: return UTF-8 JSON `byte[]` from a small read interface.
+- Key property: `dubbo.provider.service.NestedCatalogService.max-concurrent=16`
+- Consumer impact: consumer can use `RawResponse.json(bytes)` with no DTO graph.
+
+**Typed lookup or small page**
+
+- Provider design: return `record`, `String`, primitive, `List<record>`, or `Map<String,String>`.
+- Key property: method max-concurrent `4-16`, strict result limit.
+- Consumer impact: consumer can make typed business decisions, but pays Hessian/object allocation.
+
+**DB-backed query**
+
+- Provider design: use `CustomerQueryService` and keep DB pool small.
+- Key property: `sample.db.maximum-pool-size=2`, method max-concurrent `1-2`.
+- Consumer impact: p99 is bounded by DB capacity instead of hidden provider queues.
+
+**Write command**
+
+- Provider design: use compact JSON command bytes.
+- Key property: command method max-concurrent `1`, `sample.db.auto-commit=true`.
+- Consumer impact: consumer can keep retries off and fail fast on saturation.
+
+**Typed command**
+
+- Provider design: use `CreateCustomerCommand -> CustomerMutationResult` records.
+- Key property: command method max-concurrent `1`, Hikari pool aligned.
+- Consumer impact: cleaner business contract with more allocation than byte pass-through.
+
+**Kubernetes discovery**
+
+- Provider design: register every interface in ZooKeeper.
+- Key property: `reactor.dubbo.registry-address=zookeeper://...:2181`
+- Consumer impact: `zookeeper-discovery` consumer can reconnect after provider restart.
+
+**Local/static test**
+
+- Provider design: bind `127.0.0.1:20880` or container DNS.
+- Key property: `dubbo.provider.host`, `dubbo.provider.bind-host`, `dubbo.provider.port`
+- Consumer impact: static provider list can point directly to this provider.
 
 Recommended starting point: keep provider interfaces small and return ready JSON bytes for
 pass-through read APIs. Returning records, lists, maps, strings, and primitive values is valid when
@@ -62,12 +94,25 @@ reactor.dubbo.registry-root=dubbo
 
 Effect:
 
-| Property | What it does | Production note |
-|----------|--------------|-----------------|
-| `dubbo.provider.host` | Address written into ZooKeeper provider URL | Must be reachable by consumer pods. Prefer per-pod IP or headless-service DNS for real provider discovery. Do not publish `127.0.0.1` in Kubernetes. |
-| `dubbo.provider.bind-host` | Local interface the provider listens on | Use `0.0.0.0` in containers. |
-| `reactor.dubbo.registry-address` | ZooKeeper registry endpoint | Use Kubernetes DNS, not a local desktop address. |
-| `reactor.dubbo.registry-root` | Registry namespace | Keep it aligned with consumer `reactor.dubbo.registry-root`. |
+**`dubbo.provider.host`**
+
+- What it does: address written into ZooKeeper provider URL.
+- Production note: must be reachable by consumer pods. Prefer per-pod IP or headless-service DNS for real provider discovery. Do not publish `127.0.0.1` in Kubernetes.
+
+**`dubbo.provider.bind-host`**
+
+- What it does: local interface the provider listens on.
+- Production note: use `0.0.0.0` in containers.
+
+**`reactor.dubbo.registry-address`**
+
+- What it does: ZooKeeper registry endpoint.
+- Production note: use Kubernetes DNS, not a local desktop address.
+
+**`reactor.dubbo.registry-root`**
+
+- What it does: registry namespace.
+- Production note: keep it aligned with consumer `reactor.dubbo.registry-root`.
 
 ### Recipe 2: DB-Backed Query With HikariCP
 
@@ -87,12 +132,25 @@ dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-
 
 Effect:
 
-| Setting | What it controls | Why the sample keeps it small |
-|---------|------------------|-------------------------------|
-| `sample.db.maximum-pool-size` | Physical PostgreSQL connections | DB is usually the bottleneck; oversized pools increase memory and DB contention. |
-| `sample.db.minimum-idle=0` | Idle DB connections retained | Good for low-RSS samples; set higher only if cold DB acquisition hurts p99. |
-| `CustomerQueryService.max-concurrent` | Provider-side query bulkhead | Keeps provider queues aligned with DB capacity. |
-| Method override | Per-method hard cap | Protects one expensive method without lowering every method on the interface. |
+**`sample.db.maximum-pool-size`**
+
+- What it controls: physical PostgreSQL connections.
+- Why small: DB is usually the bottleneck; oversized pools increase memory and DB contention.
+
+**`sample.db.minimum-idle=0`**
+
+- What it controls: idle DB connections retained.
+- Why small: good for low-RSS samples; set higher only if cold DB acquisition hurts p99.
+
+**`CustomerQueryService.max-concurrent`**
+
+- What it controls: provider-side query bulkhead.
+- Why small: keeps provider queues aligned with DB capacity.
+
+**Method override**
+
+- What it controls: per-method hard cap.
+- Why small: protects one expensive method without lowering every method on the interface.
 
 ### Recipe 3: Write Commands Without Queue Growth
 
@@ -375,16 +433,53 @@ contracts for smaller business responses.
 
 Method shape catalog:
 
-| Method shape | Sample method | Why it exists | Cost profile |
-|--------------|---------------|---------------|--------------|
-| `byte[]` UTF-8 JSON | `getNestedCatalogJson()`, `getDatabaseCustomersJson()` | Lowest-overhead pass-through JSON. | Lowest consumer allocation; no DTO graph. |
-| `String` | `getCatalogTitle()`, `getCustomerDisplayName(id)` | Small scalar data. | Small allocation and Hessian decode. |
-| Primitive | `countCatalogItems()`, `customerExists(id)` | Counts and yes/no lookup. | Very small object graph. |
-| `record` | `getCatalogInfo()`, `getCustomer(id)`, `getCustomerStats()` | Typed business data. | Hessian materializes one record. |
-| `List<record>` | `listFeaturedItems(limit)`, `findCustomersBySegment(segment, limit)` | Small bounded pages. | List plus item records; keep limits strict. |
-| `Map<String,String>` | `getCatalogAttributes()` | Small metadata. | Map allocation; avoid large maps on hot paths. |
-| `record -> record` command | `createCustomerTyped(CreateCustomerCommand)` | Readable typed command contract. | Request object encode plus response object decode. |
-| `byte[] -> byte[]` command | `createCustomer(byte[])` | Lowest-allocation command pass-through. | Provider owns validation and JSON response shape. |
+**`byte[]` UTF-8 JSON**
+
+- Sample method: `getNestedCatalogJson()`, `getDatabaseCustomersJson()`
+- Why it exists: lowest-overhead pass-through JSON.
+- Cost profile: lowest consumer allocation; no DTO graph.
+
+**`String`**
+
+- Sample method: `getCatalogTitle()`, `getCustomerDisplayName(id)`
+- Why it exists: small scalar data.
+- Cost profile: small allocation and Hessian decode.
+
+**Primitive**
+
+- Sample method: `countCatalogItems()`, `customerExists(id)`
+- Why it exists: counts and yes/no lookup.
+- Cost profile: very small object graph.
+
+**`record`**
+
+- Sample method: `getCatalogInfo()`, `getCustomer(id)`, `getCustomerStats()`
+- Why it exists: typed business data.
+- Cost profile: Hessian materializes one record.
+
+**`List<record>`**
+
+- Sample method: `listFeaturedItems(limit)`, `findCustomersBySegment(segment, limit)`
+- Why it exists: small bounded pages.
+- Cost profile: list plus item records; keep limits strict.
+
+**`Map<String,String>`**
+
+- Sample method: `getCatalogAttributes()`
+- Why it exists: small metadata.
+- Cost profile: Map allocation; avoid large maps on hot paths.
+
+**`record -> record` command**
+
+- Sample method: `createCustomerTyped(CreateCustomerCommand)`
+- Why it exists: readable typed command contract.
+- Cost profile: request object encode plus response object decode.
+
+**`byte[] -> byte[]` command**
+
+- Sample method: `createCustomer(byte[])`
+- Why it exists: lowest-allocation command pass-through.
+- Cost profile: provider owns validation and JSON response shape.
 
 Interface split:
 
@@ -426,16 +521,53 @@ better for p99 and memory than letting an unbounded queue grow.
 
 Default sample limits:
 
-| Interface | Property | Default | Reason |
-|-----------|----------|---------|--------|
-| All services | `dubbo.provider.service.default.max-concurrent` | `16` | Safe fallback for small sample services. |
-| `NestedCatalogService` | `dubbo.provider.service.NestedCatalogService.max-concurrent` | `16` | CPU/allocation bounded catalog JSON generation. |
-| `NestedCatalogService` typed list/record methods | `dubbo.provider.service.NestedCatalogService.method.<method>.max-concurrent` | `8` for selected methods | Keeps typed DTO/list examples bounded without lowering the whole interface. |
-| `CustomerQueryService` | `dubbo.provider.service.CustomerQueryService.max-concurrent` | `2` | Aligned with `sample.db.maximum-pool-size=2` to avoid DB-pool queue buildup. |
-| `CustomerQueryService.getDatabaseCustomersJson` | `dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent` | `1` | Demonstrates method-level override for the DB-backed method. |
-| `CustomerQueryService` typed DB methods | `dubbo.provider.service.CustomerQueryService.method.<method>.max-concurrent` | `1-2` | Record/list/stats methods still hit the DB and must stay aligned with Hikari. |
-| `CustomerCommandService` | `dubbo.provider.service.CustomerCommandService.max-concurrent` | `2` | Write-side DB command concurrency stays aligned with the Hikari pool. |
-| `CustomerCommandService.*` write methods | `dubbo.provider.service.CustomerCommandService.method.<method>.max-concurrent` | `1` | Write examples are deliberately serialized per method to keep local sample behavior predictable. |
+**All services**
+
+- Property: `dubbo.provider.service.default.max-concurrent`
+- Default: `16`
+- Reason: safe fallback for small sample services.
+
+**`NestedCatalogService`**
+
+- Property: `dubbo.provider.service.NestedCatalogService.max-concurrent`
+- Default: `16`
+- Reason: CPU/allocation bounded catalog JSON generation.
+
+**`NestedCatalogService` typed list/record methods**
+
+- Property: `dubbo.provider.service.NestedCatalogService.method.<method>.max-concurrent`
+- Default: `8` for selected methods
+- Reason: keeps typed DTO/list examples bounded without lowering the whole interface.
+
+**`CustomerQueryService`**
+
+- Property: `dubbo.provider.service.CustomerQueryService.max-concurrent`
+- Default: `2`
+- Reason: aligned with `sample.db.maximum-pool-size=2` to avoid DB-pool queue buildup.
+
+**`CustomerQueryService.getDatabaseCustomersJson`**
+
+- Property: `dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent`
+- Default: `1`
+- Reason: demonstrates method-level override for the DB-backed method.
+
+**`CustomerQueryService` typed DB methods**
+
+- Property: `dubbo.provider.service.CustomerQueryService.method.<method>.max-concurrent`
+- Default: `1-2`
+- Reason: record/list/stats methods still hit the DB and must stay aligned with Hikari.
+
+**`CustomerCommandService`**
+
+- Property: `dubbo.provider.service.CustomerCommandService.max-concurrent`
+- Default: `2`
+- Reason: write-side DB command concurrency stays aligned with the Hikari pool.
+
+**`CustomerCommandService.*` write methods**
+
+- Property: `dubbo.provider.service.CustomerCommandService.method.<method>.max-concurrent`
+- Default: `1`
+- Reason: write examples are deliberately serialized per method to keep local sample behavior predictable.
 
 You can also use the fully qualified interface name if simple names collide:
 
@@ -467,13 +599,35 @@ These examples are called through the REST consumer, but the behavior is impleme
 provider. That split is intentional: the REST process stays small, while the provider owns DB access,
 mutation rules, and Hikari capacity.
 
-| Use case | Provider interface | Provider bottleneck | Starting limit |
-|----------|--------------------|---------------------|---------------:|
-| Read static/nested catalog | `NestedCatalogService` | CPU/string generation | `16` |
-| Read customers from PostgreSQL | `CustomerQueryService` | Hikari/PostgreSQL | service `2`, method `1` |
-| Create/upsert customer | `CustomerCommandService.createCustomer` | Hikari/PostgreSQL unique key | service `2`, method `1` |
-| Patch segment/status | `CustomerCommandService.patchCustomer*` | Hikari/PostgreSQL update | service `2`, method `1` |
-| Delete customer | `CustomerCommandService.deleteCustomer` | Hikari/PostgreSQL delete/audit | service `2`, method `1` |
+**Read static/nested catalog**
+
+- Provider interface: `NestedCatalogService`
+- Provider bottleneck: CPU/string generation
+- Starting limit: `16`
+
+**Read customers from PostgreSQL**
+
+- Provider interface: `CustomerQueryService`
+- Provider bottleneck: Hikari/PostgreSQL
+- Starting limit: service `2`, method `1`
+
+**Create/upsert customer**
+
+- Provider interface: `CustomerCommandService.createCustomer`
+- Provider bottleneck: Hikari/PostgreSQL unique key
+- Starting limit: service `2`, method `1`
+
+**Patch segment/status**
+
+- Provider interface: `CustomerCommandService.patchCustomer*`
+- Provider bottleneck: Hikari/PostgreSQL update
+- Starting limit: service `2`, method `1`
+
+**Delete customer**
+
+- Provider interface: `CustomerCommandService.deleteCustomer`
+- Provider bottleneck: Hikari/PostgreSQL delete/audit
+- Starting limit: service `2`, method `1`
 
 ### Use Case: Create Customer Command
 
