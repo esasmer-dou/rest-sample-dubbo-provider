@@ -34,14 +34,16 @@ registration, HikariCP pool size ve interface/method bazlı concurrency limitler
 | Senaryonuz | Provider tasarımı | Ana property'ler | Consumer etkisi |
 |------------|-------------------|------------------|-----------------|
 | Read-heavy lookup/catalog | Küçük read interface UTF-8 JSON `byte[]` döner | `dubbo.provider.service.NestedCatalogService.max-concurrent=16` | Consumer `RawResponse.json(bytes)` ile DTO graph kurmadan döner |
+| Typed lookup veya küçük sayfa | Provider interface `record`, `String`, primitive, `List<record>` veya `Map<String,String>` döner | Method max-concurrent `4-16`, strict result limit | Consumer typed business karar verebilir, fakat Hessian/object allocation oluşur |
 | DB-backed query | `CustomerQueryService` kullanılır, DB pool küçük tutulur | `sample.db.maximum-pool-size=2`, method max-concurrent `1-2` | p99 gizli provider queue yerine DB kapasitesiyle sınırlanır |
 | Write command | Compact JSON command bytes kullanılır | command method max-concurrent `1`, `sample.db.auto-commit=true` | Consumer retry kapalı ve saturation anında fail-fast çalışabilir |
+| Typed command | `CreateCustomerCommand -> CustomerMutationResult` record'ları kullanılır | command method max-concurrent `1`, Hikari pool ile hizalı | Daha temiz business contract; byte pass-through'a göre allocation daha fazladır |
 | Kubernetes discovery | Her interface ZooKeeper'a register edilir | `reactor.dubbo.registry-address=zookeeper://...:2181` | Consumer `zookeeper-discovery` provider restart sonrası reconnect edebilir |
 | Lokal/static test | `127.0.0.1:20880` veya container DNS bind edilir | `dubbo.provider.host`, `dubbo.provider.bind-host`, `dubbo.provider.port` | Consumer static provider listesi doğrudan bu provider'a gider |
 
 Önerilen başlangıç: pass-through read API'lerde küçük interface ve hazır JSON bytes dönmek. Consumer
-typed business karar verecekse record dönmek de uygundur. Consumer'ın hemen tekrar JSON'a çevireceği
-büyük nested object graph dönmekten kaçının.
+typed business karar verecekse record, list, map, string ve primitive değer dönmek de uygundur.
+Consumer'ın hemen tekrar JSON'a çevireceği büyük nested object graph dönmekten kaçının.
 
 ## Production Reçeteleri
 
@@ -100,8 +102,10 @@ POST/PATCH/DELETE istekleri provider command method'larına çevriliyorsa bunu k
 ```properties
 dubbo.provider.service.CustomerCommandService.max-concurrent=2
 dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent=1
+dubbo.provider.service.CustomerCommandService.method.createCustomerTyped.max-concurrent=1
 dubbo.provider.service.CustomerCommandService.method.patchCustomerSegment.max-concurrent=1
 dubbo.provider.service.CustomerCommandService.method.patchCustomerStatus.max-concurrent=1
+dubbo.provider.service.CustomerCommandService.method.patchCustomerStatusTyped.max-concurrent=1
 dubbo.provider.service.CustomerCommandService.method.deleteCustomer.max-concurrent=1
 sample.db.maximum-pool-size=2
 ```
@@ -330,10 +334,30 @@ Provider tek büyük RPC yüzeyi yerine küçük ve cohesive interface'ler expos
 ```java
 public interface NestedCatalogService {
     byte[] getNestedCatalogJson();
+
+    String getCatalogTitle();
+
+    int countCatalogItems();
+
+    CatalogInfo getCatalogInfo();
+
+    List<CatalogItem> listFeaturedItems(int limit);
+
+    Map<String, String> getCatalogAttributes();
 }
 
 public interface CustomerQueryService {
     byte[] getDatabaseCustomersJson();
+
+    CustomerSummary getCustomer(long customerId);
+
+    List<CustomerSummary> findCustomersBySegment(String segment, int limit);
+
+    CustomerStats getCustomerStats();
+
+    boolean customerExists(long customerId);
+
+    String getCustomerDisplayName(long customerId);
 }
 
 public interface CustomerCommandService {
@@ -341,19 +365,37 @@ public interface CustomerCommandService {
     byte[] patchCustomerSegment(long customerId, byte[] commandJson);
     byte[] patchCustomerStatus(long customerId, byte[] commandJson);
     byte[] deleteCustomer(long customerId, byte[] commandJson);
+
+    CustomerMutationResult createCustomerTyped(CreateCustomerCommand command);
+
+    CustomerMutationResult patchCustomerStatusTyped(long customerId, String status, String requestId);
 }
 ```
 
-Consumer bu bytes'ı `RawResponse.json(...)` ile tekrar DTO graph kurmadan HTTP response olarak
-taşıyabilir.
+Consumer byte-array method'larını hâlâ `RawResponse.json(...)` ile tekrar DTO graph kurmadan HTTP
+response olarak taşıyabilir. Typed method'lar ise küçük business response'lar için normal Dubbo
+object contract örneğidir.
+
+Method veri yapısı kataloğu:
+
+| Method şekli | Sample method | Neden var? | Maliyet profili |
+|--------------|---------------|------------|-----------------|
+| `byte[]` UTF-8 JSON | `getNestedCatalogJson()`, `getDatabaseCustomersJson()` | En düşük overhead pass-through JSON. | Consumer allocation en düşük; DTO graph yok. |
+| `String` | `getCatalogTitle()`, `getCustomerDisplayName(id)` | Küçük scalar veri. | Küçük allocation ve Hessian decode. |
+| Primitive | `countCatalogItems()`, `customerExists(id)` | Count ve yes/no lookup. | Çok küçük object graph. |
+| `record` | `getCatalogInfo()`, `getCustomer(id)`, `getCustomerStats()` | Typed business data. | Hessian tek record materialize eder. |
+| `List<record>` | `listFeaturedItems(limit)`, `findCustomersBySegment(segment, limit)` | Küçük bounded sayfalar. | Liste + item record'ları; limit strict olmalı. |
+| `Map<String,String>` | `getCatalogAttributes()` | Küçük metadata. | Map allocation; hot path'te büyük map kullanmayın. |
+| `record -> record` command | `createCustomerTyped(CreateCustomerCommand)` | Okunabilir typed command contract. | Request object encode + response object decode. |
+| `byte[] -> byte[]` command | `createCustomer(byte[])` | En düşük allocation command pass-through. | Validation ve JSON response shape provider sorumluluğudur. |
 
 Interface ayrımı:
 
 | Interface | Implementation | Sorumluluk |
 |-----------|----------------|------------|
-| `NestedCatalogService` | `NestedCatalogServiceImpl` | Static nested catalog JSON. |
-| `CustomerQueryService` | `CustomerQueryServiceImpl` | HikariCP/ActiveJDBC üzerinden PostgreSQL-backed customer JSON. |
-| `CustomerCommandService` | `CustomerCommandServiceImpl` | Compact JSON command bytes ile POST/PATCH/DELETE tarzı DB command'leri. |
+| `NestedCatalogService` | `NestedCatalogServiceImpl` | Static catalog örnekleri: raw JSON bytes, scalar, record, list ve map. |
+| `CustomerQueryService` | `CustomerQueryServiceImpl` | PostgreSQL-backed query örnekleri: raw JSON bytes, record lookup, list page, stats, string, boolean. |
+| `CustomerCommandService` | `CustomerCommandServiceImpl` | Hem compact JSON bytes hem typed command record ile POST/PATCH/DELETE tarzı DB command'leri. |
 
 BEST: interface'leri küçük ve cohesive tutmak. ACCEPTABLE: sample veya aynı bounded context içinde
 bir provider process'in aynı Dubbo portunda birden fazla interface export etmesi. ANTI-PATTERN:
@@ -391,8 +433,10 @@ Varsayılan sample limitleri:
 |-----------|----------|---------|--------|
 | Tüm servisler | `dubbo.provider.service.default.max-concurrent` | `16` | Küçük sample servisler için güvenli fallback. |
 | `NestedCatalogService` | `dubbo.provider.service.NestedCatalogService.max-concurrent` | `16` | Catalog JSON üretimini CPU/allocation açısından sınırlar. |
+| `NestedCatalogService` typed list/record method'ları | `dubbo.provider.service.NestedCatalogService.method.<method>.max-concurrent` | Seçili method'larda `8` | Tüm interface'i düşürmeden typed DTO/list örneklerini bounded tutar. |
 | `CustomerQueryService` | `dubbo.provider.service.CustomerQueryService.max-concurrent` | `2` | `sample.db.maximum-pool-size=2` ile hizalıdır; DB pool queue büyümesini engeller. |
 | `CustomerQueryService.getDatabaseCustomersJson` | `dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent` | `1` | DB-backed method için method-level override örneğidir. |
+| `CustomerQueryService` typed DB method'ları | `dubbo.provider.service.CustomerQueryService.method.<method>.max-concurrent` | `1-2` | Record/list/stats method'ları da DB'ye gider; Hikari ile hizalı kalmalıdır. |
 | `CustomerCommandService` | `dubbo.provider.service.CustomerCommandService.max-concurrent` | `2` | Write-side DB command concurrency Hikari pool ile hizalı kalır. |
 | `CustomerCommandService.*` write method'ları | `dubbo.provider.service.CustomerCommandService.method.<method>.max-concurrent` | `1` | Write örnekleri lokal sample davranışını öngörülebilir tutmak için method bazında serialized tutulur. |
 
@@ -773,10 +817,11 @@ Runtime değerleri properties dosyasındadır. Eksik veya hatalı property start
 | `reactor.dubbo.registry-address` | ZooKeeper registry adresi. |
 | `dubbo.provider.service.default.max-concurrent` | Export edilen interface'ler için default concurrent invocation limiti. |
 | `dubbo.provider.service.NestedCatalogService.max-concurrent` | Catalog provider method'ları için concurrent invocation limiti. |
+| `dubbo.provider.service.NestedCatalogService.method.*.max-concurrent` | Typed/list catalog method'ları için opsiyonel method-level override. |
 | `dubbo.provider.service.CustomerQueryService.max-concurrent` | DB-backed customer provider method'ları için concurrent invocation limiti. |
-| `dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent` | Customer DB method'u için method-level override limiti. |
+| `dubbo.provider.service.CustomerQueryService.method.*.max-concurrent` | Raw JSON, record lookup, list query ve stats method'ları için method-level override. DB-backed method'ları Hikari ile hizalı tutun. |
 | `dubbo.provider.service.CustomerCommandService.max-concurrent` | Write-side customer command'leri için concurrent invocation limiti. |
-| `dubbo.provider.service.CustomerCommandService.method.*.max-concurrent` | Method-level write command override'ları. Hikari ile hizalı tutun. |
+| `dubbo.provider.service.CustomerCommandService.method.*.max-concurrent` | Byte command ve typed command method'ları için method-level write command override'ları. Hikari ile hizalı tutun. |
 | `sample.db.jdbc-url` | PostgreSQL JDBC URL. |
 | `sample.db.maximum-pool-size` | Hikari maximum pool size. |
 | `sample.db.minimum-idle` | Hikari minimum idle connection sayısı. `0` idle RSS'i düşük tutar. |

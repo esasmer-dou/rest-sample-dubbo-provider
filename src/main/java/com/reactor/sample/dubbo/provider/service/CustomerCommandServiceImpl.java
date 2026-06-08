@@ -1,6 +1,8 @@
 package com.reactor.sample.dubbo.provider.service;
 
 import com.reactor.rust.dubbo.sample.CustomerCommandService;
+import com.reactor.rust.dubbo.sample.dto.CreateCustomerCommand;
+import com.reactor.rust.dubbo.sample.dto.CustomerMutationResult;
 import com.reactor.sample.dubbo.provider.db.PostgresCustomerRepository;
 import com.reactor.sample.dubbo.provider.db.SampleCustomer;
 
@@ -79,6 +81,47 @@ public final class CustomerCommandServiceImpl implements CustomerCommandService 
         return json.getBytes(StandardCharsets.UTF_8);
     }
 
+    @Override
+    public CustomerMutationResult createCustomerTyped(CreateCustomerCommand command) {
+        if (command == null || blank(command.customerNo()) || blank(command.fullName())) {
+            return failure(
+                    "customer_create_typed",
+                    command == null ? "" : command.requestId(),
+                    "customerNo and fullName are required"
+            );
+        }
+        SampleCustomer customer = customerRepository.createCustomer(
+                command.customerNo(),
+                command.fullName(),
+                blank(command.segment()) ? "standard" : command.segment(),
+                command.email() == null ? "" : command.email()
+        );
+        return mutation("customer_created_or_updated_typed", command.requestId(), true, customer, "ok");
+    }
+
+    @Override
+    public CustomerMutationResult patchCustomerStatusTyped(long customerId, String status, String requestId) {
+        if (blank(status)) {
+            return failure("customer_status_typed", requestId, "status is required");
+        }
+        SampleCustomer customer = customerRepository.updateStatus(customerId, status);
+        if (customer == null) {
+            return new CustomerMutationResult(
+                    "customer_status_typed",
+                    valueOrEmpty(requestId),
+                    false,
+                    customerId,
+                    "",
+                    "",
+                    "",
+                    "",
+                    "customer_not_found",
+                    Instant.now().toString()
+            );
+        }
+        return mutation("customer_status_updated_typed", requestId, true, customer, "ok");
+    }
+
     private static byte[] success(String operation, SampleCustomer customer, JsonCommand command) {
         String json = """
                 {
@@ -137,6 +180,49 @@ public final class CustomerCommandServiceImpl implements CustomerCommandService 
                 }
                 """.formatted(escapeJson(code), escapeJson(message), Instant.now());
         return json.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static CustomerMutationResult mutation(
+            String operation,
+            String requestId,
+            boolean success,
+            SampleCustomer customer,
+            String message) {
+        return new CustomerMutationResult(
+                operation,
+                valueOrEmpty(requestId),
+                success,
+                customer.id(),
+                customer.customerNo(),
+                customer.fullName(),
+                customer.segment(),
+                customer.status(),
+                message,
+                Instant.now().toString()
+        );
+    }
+
+    private static CustomerMutationResult failure(String operation, String requestId, String message) {
+        return new CustomerMutationResult(
+                operation,
+                valueOrEmpty(requestId),
+                false,
+                null,
+                "",
+                "",
+                "",
+                "",
+                message,
+                Instant.now().toString()
+        );
+    }
+
+    private static boolean blank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private static String valueOrEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     private static String escapeJson(String value) {

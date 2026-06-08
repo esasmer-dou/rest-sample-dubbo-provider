@@ -23,6 +23,25 @@ public final class PostgresCustomerRepository implements AutoCloseable {
             order by id
             limit 100
             """;
+    private static final String SELECT_CUSTOMER_BY_ID = """
+            select id, customer_no, full_name, segment, email, status, created_at, updated_at
+            from sample_customers
+            where id = ?
+            """;
+    private static final String SELECT_CUSTOMERS_BY_SEGMENT = """
+            select id, customer_no, full_name, segment, email, status, created_at, updated_at
+            from sample_customers
+            where segment = ?
+            order by id
+            limit ?
+            """;
+    private static final String SELECT_CUSTOMER_COUNTS = """
+            select
+              count(*) as total,
+              sum(case when status = 'active' then 1 else 0 end) as active,
+              sum(case when status = 'passive' then 1 else 0 end) as passive
+            from sample_customers
+            """;
 
     private final HikariDataSource dataSource;
     private final boolean schemaInit;
@@ -71,6 +90,56 @@ public final class PostgresCustomerRepository implements AutoCloseable {
             return customers;
         } finally {
             Base.close();
+        }
+    }
+
+    public SampleCustomer findCustomer(long customerId) {
+        ensureInitialized();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(SELECT_CUSTOMER_BY_ID)) {
+            statement.setLong(1, customerId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next() ? toCustomer(resultSet) : null;
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("Find customer failed", e);
+        }
+    }
+
+    public List<SampleCustomer> findCustomersBySegment(String segment, int limit) {
+        ensureInitialized();
+        int boundedLimit = Math.max(1, Math.min(limit, 100));
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(SELECT_CUSTOMERS_BY_SEGMENT)) {
+            statement.setString(1, segment == null || segment.isBlank() ? "standard" : segment);
+            statement.setInt(2, boundedLimit);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<SampleCustomer> customers = new ArrayList<>();
+                while (resultSet.next()) {
+                    customers.add(toCustomer(resultSet));
+                }
+                return customers;
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("Find customers by segment failed", e);
+        }
+    }
+
+    public CustomerCounts countCustomersByStatus() {
+        ensureInitialized();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(SELECT_CUSTOMER_COUNTS);
+             ResultSet resultSet = statement.executeQuery()) {
+            if (!resultSet.next()) {
+                return new CustomerCounts(0, 0, 0);
+            }
+            return new CustomerCounts(
+                    resultSet.getInt("total"),
+                    resultSet.getInt("active"),
+                    resultSet.getInt("passive")
+            );
+        } catch (Exception e) {
+            throw new IllegalStateException("Count customers failed", e);
         }
     }
 
@@ -237,6 +306,9 @@ public final class PostgresCustomerRepository implements AutoCloseable {
             return instant;
         }
         return Instant.parse(String.valueOf(value));
+    }
+
+    public record CustomerCounts(int total, int active, int passive) {
     }
 
 }

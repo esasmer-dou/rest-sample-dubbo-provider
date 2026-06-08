@@ -1,6 +1,8 @@
 package com.reactor.sample.dubbo.provider.service;
 
 import com.reactor.rust.dubbo.sample.CustomerQueryService;
+import com.reactor.rust.dubbo.sample.dto.CustomerStats;
+import com.reactor.rust.dubbo.sample.dto.CustomerSummary;
 import com.reactor.sample.dubbo.provider.db.PostgresCustomerRepository;
 import com.reactor.sample.dubbo.provider.db.SampleCustomer;
 
@@ -53,6 +55,42 @@ public final class CustomerQueryServiceImpl implements CustomerQueryService, Aut
     }
 
     @Override
+    public CustomerSummary getCustomer(long customerId) {
+        SampleCustomer customer = customerRepository.findCustomer(customerId);
+        return customer == null ? null : summary(customer);
+    }
+
+    @Override
+    public List<CustomerSummary> findCustomersBySegment(String segment, int limit) {
+        return customerRepository.findCustomersBySegment(segment, limit)
+                .stream()
+                .map(CustomerQueryServiceImpl::summary)
+                .toList();
+    }
+
+    @Override
+    public CustomerStats getCustomerStats() {
+        PostgresCustomerRepository.CustomerCounts counts = customerRepository.countCustomersByStatus();
+        return new CustomerStats(
+                counts.total(),
+                counts.active(),
+                counts.passive(),
+                Instant.now().toString()
+        );
+    }
+
+    @Override
+    public boolean customerExists(long customerId) {
+        return customerRepository.findCustomer(customerId) != null;
+    }
+
+    @Override
+    public String getCustomerDisplayName(long customerId) {
+        SampleCustomer customer = customerRepository.findCustomer(customerId);
+        return customer == null ? "" : customer.fullName();
+    }
+
+    @Override
     public void close() {
         customerRepository.close();
     }
@@ -67,5 +105,17 @@ public final class CustomerQueryServiceImpl implements CustomerQueryService, Aut
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
                 .replace("\t", "\\t");
+    }
+
+    private static CustomerSummary summary(SampleCustomer customer) {
+        return new CustomerSummary(
+                customer.id(),
+                customer.customerNo(),
+                customer.fullName(),
+                customer.segment(),
+                customer.email(),
+                customer.status(),
+                customer.updatedAt().toString()
+        );
     }
 }
