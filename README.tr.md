@@ -33,11 +33,11 @@ registration, HikariCP pool size ve interface/method bazlı concurrency limitler
 
 | Senaryo | Provider tasarımı | Ana ayar | Consumer etkisi |
 |----------|-------------------|----------|-----------------|
-| Read-heavy lookup/catalog | Küçük read interface<br>UTF-8 JSON `byte[]` | `NestedCatalogService.max-concurrent=16` | `RawResponse.json(bytes)`<br>DTO graph yok |
-| Typed lookup/küçük sayfa | `record`, `String`, primitive,<br>`List<record>`, `Map<String,String>` | Method max-concurrent `4-16`<br>strict result limit | Typed business karar mümkün<br>Hessian/object allocation var |
-| DB-backed query | `CustomerQueryService`<br>küçük DB pool | `sample.db.maximum-pool-size=2`<br>method `1-2` | p99 DB kapasitesiyle sınırlanır |
-| Write command | Compact JSON command bytes | command method `1`<br>`sample.db.auto-commit=true` | Retry kapalı, saturation'da fail-fast |
-| Typed command | `CreateCustomerCommand -> CustomerMutationResult` | command method `1`<br>Hikari ile hizalı | Daha temiz contract<br>byte pass-through'dan pahalı |
+| Read-heavy lookup/catalog | Küçük read interface<br>UTF-8 JSON `byte[]` | <small><code>dubbo.provider.service.NestedCatalogService.max-concurrent=16</code></small> | `RawResponse.json(bytes)`<br>DTO graph yok |
+| Typed lookup/küçük sayfa | `record`, `String`, primitive,<br>`List<record>`, `Map<String,String>` | <small><code>dubbo.provider.service.NestedCatalogService.method.&lt;method&gt;.max-concurrent=4-16</code><br>strict result limit</small> | Typed business karar mümkün<br>Hessian/object allocation var |
+| DB-backed query | `CustomerQueryService`<br>küçük DB pool | <small><code>sample.db.maximum-pool-size=2</code><br><code>dubbo.provider.service.CustomerQueryService.max-concurrent=1-2</code></small> | p99 DB kapasitesiyle sınırlanır |
+| Write command | Compact JSON command bytes | <small><code>dubbo.provider.service.CustomerCommandService.method.&lt;method&gt;.max-concurrent=1</code><br><code>sample.db.auto-commit=true</code></small> | Retry kapalı, saturation'da fail-fast |
+| Typed command | `CreateCustomerCommand -> CustomerMutationResult` | <small><code>dubbo.provider.service.CustomerCommandService.method.createCustomerTyped.max-concurrent=1</code><br>Hikari ile hizalı</small> | Daha temiz contract<br>byte pass-through'dan pahalı |
 | Kubernetes discovery | Her interface ZooKeeper'a register edilir | `reactor.dubbo.registry-address=zookeeper://...:2181` | `zookeeper-discovery` reconnect edebilir |
 | Lokal/static test | `127.0.0.1:20880` veya container DNS | `dubbo.provider.host`<br>`bind-host`, `port` | Static provider listesi buraya gider |
 
@@ -311,8 +311,8 @@ bağımsız tune etmeyin:
 
 | Provider kapasitesi | Consumer ayarı | Pratik kural |
 |---------------------|----------------|--------------|
-| `dubbo.provider.service.NestedCatalogService.max-concurrent=16` | `catalog.nested.max-concurrent=16` | Basit catalog için provider kadar in-flight kabul edilebilir. |
-| `dubbo.provider.service.CustomerQueryService.max-concurrent=2` | DB route `max-concurrent=8` | Async/kısa çağrıda kabul edilebilir.<br>p99 büyürse önce düşürün. |
+| `dubbo.provider.service.NestedCatalogService.max-concurrent=16` | `reactor.rust.route-admission.get.api.v1.catalog.nested.max-concurrent=16` | Basit catalog için provider kadar in-flight kabul edilebilir. |
+| `dubbo.provider.service.CustomerQueryService.max-concurrent=2` | `reactor.rust.route-admission.get.api.v1.customers.db.max-concurrent=8` | Async/kısa çağrıda kabul edilebilir.<br>p99 büyürse önce düşürün. |
 | `sample.db.maximum-pool-size=2` | DB method provider limiti | Bilinçli provider-side bekleme istemiyorsanız DB method concurrency Hikari pool'u aşmamalı. |
 
 BEST: küçük provider limitleriyle başlayıp provider CPU, DB pool wait, consumer 503 oranı, p99 latency
@@ -459,13 +459,13 @@ Varsayılan sample limitleri:
 | Scope | Property | Default | Neden |
 |-------|----------|---------|-------|
 | Tüm servisler | `dubbo.provider.service.default.max-concurrent` | `16` | Güvenli fallback |
-| `NestedCatalogService` | `...NestedCatalogService.max-concurrent` | `16` | Catalog JSON CPU/allocation sınırı |
-| `NestedCatalogService` typed method | `...NestedCatalogService.method.<method>.max-concurrent` | `8` | Typed DTO/list bounded kalır |
-| `CustomerQueryService` | `...CustomerQueryService.max-concurrent` | `2` | `sample.db.maximum-pool-size=2` ile hizalı |
-| `getDatabaseCustomersJson` | `...CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent` | `1` | DB-backed method override |
-| Typed DB method'ları | `...CustomerQueryService.method.<method>.max-concurrent` | `1-2` | Record/list/stats Hikari ile hizalı |
-| `CustomerCommandService` | `...CustomerCommandService.max-concurrent` | `2` | Write-side DB concurrency Hikari ile hizalı |
-| Write method'ları | `...CustomerCommandService.method.<method>.max-concurrent` | `1` | Lokal sample write davranışı öngörülebilir |
+| `NestedCatalogService` | `dubbo.provider.service.NestedCatalogService.max-concurrent` | `16` | Catalog JSON CPU/allocation sınırı |
+| `NestedCatalogService` typed method | `dubbo.provider.service.NestedCatalogService.method.<method>.max-concurrent` | `8` | Typed DTO/list bounded kalır |
+| `CustomerQueryService` | `dubbo.provider.service.CustomerQueryService.max-concurrent` | `2` | `sample.db.maximum-pool-size=2` ile hizalı |
+| `getDatabaseCustomersJson` | `dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent` | `1` | DB-backed method override |
+| Typed DB method'ları | `dubbo.provider.service.CustomerQueryService.method.<method>.max-concurrent` | `1-2` | Record/list/stats Hikari ile hizalı |
+| `CustomerCommandService` | `dubbo.provider.service.CustomerCommandService.max-concurrent` | `2` | Write-side DB concurrency Hikari ile hizalı |
+| Write method'ları | `dubbo.provider.service.CustomerCommandService.method.<method>.max-concurrent` | `1` | Lokal sample write davranışı öngörülebilir |
 
 Simple name çakışması varsa fully qualified interface adı da kullanılabilir:
 
@@ -500,10 +500,10 @@ sahibi olur.
 | Use case | Provider interface | Darboğaz | Başlangıç |
 |----------|--------------------|----------|-----------:|
 | Static/nested catalog read | `NestedCatalogService` | CPU/string generation | `16` |
-| PostgreSQL customer read | `CustomerQueryService` | Hikari/PostgreSQL | service `2`<br>method `1` |
-| Customer create/upsert | `CustomerCommandService.createCustomer` | Hikari/PostgreSQL unique key | service `2`<br>method `1` |
-| Segment/status patch | `CustomerCommandService.patchCustomer*` | Hikari/PostgreSQL update | service `2`<br>method `1` |
-| Customer delete | `CustomerCommandService.deleteCustomer` | Hikari/PostgreSQL delete/audit | service `2`<br>method `1` |
+| PostgreSQL customer read | `CustomerQueryService` | Hikari/PostgreSQL | <small><code>dubbo.provider.service.CustomerQueryService.max-concurrent=2</code><br><code>dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent=1</code></small> |
+| Customer create/upsert | `CustomerCommandService.createCustomer` | Hikari/PostgreSQL unique key | <small><code>dubbo.provider.service.CustomerCommandService.max-concurrent=2</code><br><code>dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent=1</code></small> |
+| Segment/status patch | `CustomerCommandService.patchCustomer*` | Hikari/PostgreSQL update | <small><code>dubbo.provider.service.CustomerCommandService.max-concurrent=2</code><br><code>dubbo.provider.service.CustomerCommandService.method.patchCustomerStatus.max-concurrent=1</code></small> |
+| Customer delete | `CustomerCommandService.deleteCustomer` | Hikari/PostgreSQL delete/audit | <small><code>dubbo.provider.service.CustomerCommandService.max-concurrent=2</code><br><code>dubbo.provider.service.CustomerCommandService.method.deleteCustomer.max-concurrent=1</code></small> |
 
 ### Use Case: Customer Create Command
 

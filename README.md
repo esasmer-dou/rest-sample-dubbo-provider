@@ -32,11 +32,11 @@ registration, HikariCP pool size, and per-interface/per-method concurrency limit
 
 | Scenario | Provider design | Key setting | Consumer impact |
 |----------|-----------------|-------------|-----------------|
-| Read-heavy lookup/catalog | Small read interface<br>returns UTF-8 JSON `byte[]` | `NestedCatalogService.max-concurrent=16` | `RawResponse.json(bytes)`<br>no DTO graph |
-| Typed lookup/small page | `record`, `String`, primitive,<br>`List<record>`, `Map<String,String>` | Method max-concurrent `4-16`<br>strict result limit | Typed business decisions<br>Hessian/object allocation |
-| DB-backed query | `CustomerQueryService`<br>small DB pool | `sample.db.maximum-pool-size=2`<br>method `1-2` | p99 bounded by DB capacity |
-| Write command | Compact JSON command bytes | command method `1`<br>`sample.db.auto-commit=true` | Retries off, fail-fast on saturation |
-| Typed command | `CreateCustomerCommand -> CustomerMutationResult` | command method `1`<br>aligned with Hikari | Cleaner contract<br>costlier than byte pass-through |
+| Read-heavy lookup/catalog | Small read interface<br>returns UTF-8 JSON `byte[]` | <small><code>dubbo.provider.service.NestedCatalogService.max-concurrent=16</code></small> | `RawResponse.json(bytes)`<br>no DTO graph |
+| Typed lookup/small page | `record`, `String`, primitive,<br>`List<record>`, `Map<String,String>` | <small><code>dubbo.provider.service.NestedCatalogService.method.&lt;method&gt;.max-concurrent=4-16</code><br>strict result limit</small> | Typed business decisions<br>Hessian/object allocation |
+| DB-backed query | `CustomerQueryService`<br>small DB pool | <small><code>sample.db.maximum-pool-size=2</code><br><code>dubbo.provider.service.CustomerQueryService.max-concurrent=1-2</code></small> | p99 bounded by DB capacity |
+| Write command | Compact JSON command bytes | <small><code>dubbo.provider.service.CustomerCommandService.method.&lt;method&gt;.max-concurrent=1</code><br><code>sample.db.auto-commit=true</code></small> | Retries off, fail-fast on saturation |
+| Typed command | `CreateCustomerCommand -> CustomerMutationResult` | <small><code>dubbo.provider.service.CustomerCommandService.method.createCustomerTyped.max-concurrent=1</code><br>aligned with Hikari</small> | Cleaner contract<br>costlier than byte pass-through |
 | Kubernetes discovery | Register every interface in ZooKeeper | `reactor.dubbo.registry-address=zookeeper://...:2181` | `zookeeper-discovery` can reconnect |
 | Local/static test | Bind `127.0.0.1:20880` or container DNS | `dubbo.provider.host`<br>`bind-host`, `port` | Static provider list points here |
 
@@ -308,8 +308,8 @@ provider limits instead of tuning them independently:
 
 | Provider capacity | Consumer setting to check | Practical rule |
 |-------------------|---------------------------|----------------|
-| `dubbo.provider.service.NestedCatalogService.max-concurrent=16` | `catalog.nested.max-concurrent=16` | Simple catalog calls can match provider concurrency. |
-| `dubbo.provider.service.CustomerQueryService.max-concurrent=2` | DB route `max-concurrent=8` | Acceptable for async/short calls.<br>If p99 grows, lower this first. |
+| `dubbo.provider.service.NestedCatalogService.max-concurrent=16` | `reactor.rust.route-admission.get.api.v1.catalog.nested.max-concurrent=16` | Simple catalog calls can match provider concurrency. |
+| `dubbo.provider.service.CustomerQueryService.max-concurrent=2` | `reactor.rust.route-admission.get.api.v1.customers.db.max-concurrent=8` | Acceptable for async/short calls.<br>If p99 grows, lower this first. |
 | `sample.db.maximum-pool-size=2` | DB method provider limit | DB method concurrency should not exceed the Hikari pool unless you intentionally want provider-side waiting. |
 
 BEST: start with small provider limits and increase only after measuring provider CPU, DB pool wait,
@@ -457,13 +457,13 @@ Default sample limits:
 | Scope | Property | Default | Reason |
 |-------|----------|---------|--------|
 | All services | `dubbo.provider.service.default.max-concurrent` | `16` | Safe fallback |
-| `NestedCatalogService` | `...NestedCatalogService.max-concurrent` | `16` | Catalog JSON CPU/allocation bound |
-| `NestedCatalogService` typed methods | `...NestedCatalogService.method.<method>.max-concurrent` | `8` | Typed DTO/list stays bounded |
-| `CustomerQueryService` | `...CustomerQueryService.max-concurrent` | `2` | Aligned with `sample.db.maximum-pool-size=2` |
-| `getDatabaseCustomersJson` | `...CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent` | `1` | DB-backed method override |
-| Typed DB methods | `...CustomerQueryService.method.<method>.max-concurrent` | `1-2` | Record/list/stats aligned with Hikari |
-| `CustomerCommandService` | `...CustomerCommandService.max-concurrent` | `2` | Write-side DB concurrency aligned with Hikari |
-| Write methods | `...CustomerCommandService.method.<method>.max-concurrent` | `1` | Predictable local sample writes |
+| `NestedCatalogService` | `dubbo.provider.service.NestedCatalogService.max-concurrent` | `16` | Catalog JSON CPU/allocation bound |
+| `NestedCatalogService` typed methods | `dubbo.provider.service.NestedCatalogService.method.<method>.max-concurrent` | `8` | Typed DTO/list stays bounded |
+| `CustomerQueryService` | `dubbo.provider.service.CustomerQueryService.max-concurrent` | `2` | Aligned with `sample.db.maximum-pool-size=2` |
+| `getDatabaseCustomersJson` | `dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent` | `1` | DB-backed method override |
+| Typed DB methods | `dubbo.provider.service.CustomerQueryService.method.<method>.max-concurrent` | `1-2` | Record/list/stats aligned with Hikari |
+| `CustomerCommandService` | `dubbo.provider.service.CustomerCommandService.max-concurrent` | `2` | Write-side DB concurrency aligned with Hikari |
+| Write methods | `dubbo.provider.service.CustomerCommandService.method.<method>.max-concurrent` | `1` | Predictable local sample writes |
 
 You can also use the fully qualified interface name if simple names collide:
 
@@ -498,10 +498,10 @@ mutation rules, and Hikari capacity.
 | Use case | Provider interface | Bottleneck | Start |
 |----------|--------------------|------------|------:|
 | Read static/nested catalog | `NestedCatalogService` | CPU/string generation | `16` |
-| Read customers from PostgreSQL | `CustomerQueryService` | Hikari/PostgreSQL | service `2`<br>method `1` |
-| Create/upsert customer | `CustomerCommandService.createCustomer` | Hikari/PostgreSQL unique key | service `2`<br>method `1` |
-| Patch segment/status | `CustomerCommandService.patchCustomer*` | Hikari/PostgreSQL update | service `2`<br>method `1` |
-| Delete customer | `CustomerCommandService.deleteCustomer` | Hikari/PostgreSQL delete/audit | service `2`<br>method `1` |
+| Read customers from PostgreSQL | `CustomerQueryService` | Hikari/PostgreSQL | <small><code>dubbo.provider.service.CustomerQueryService.max-concurrent=2</code><br><code>dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent=1</code></small> |
+| Create/upsert customer | `CustomerCommandService.createCustomer` | Hikari/PostgreSQL unique key | <small><code>dubbo.provider.service.CustomerCommandService.max-concurrent=2</code><br><code>dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent=1</code></small> |
+| Patch segment/status | `CustomerCommandService.patchCustomer*` | Hikari/PostgreSQL update | <small><code>dubbo.provider.service.CustomerCommandService.max-concurrent=2</code><br><code>dubbo.provider.service.CustomerCommandService.method.patchCustomerStatus.max-concurrent=1</code></small> |
+| Delete customer | `CustomerCommandService.deleteCustomer` | Hikari/PostgreSQL delete/audit | <small><code>dubbo.provider.service.CustomerCommandService.max-concurrent=2</code><br><code>dubbo.provider.service.CustomerCommandService.method.deleteCustomer.max-concurrent=1</code></small> |
 
 ### Use Case: Create Customer Command
 
