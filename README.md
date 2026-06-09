@@ -373,6 +373,34 @@ The consumer can still forward the byte-array methods through `RawResponse.json(
 building another DTO graph. The typed methods intentionally demonstrate normal Dubbo object
 contracts for smaller business responses.
 
+### Provider Data Shape Decision
+
+The provider method signature directly affects consumer memory and p99 behavior. Choose the method
+shape by data flow and ownership boundaries, not only by API readability.
+
+| Provider method | Provider owns | Consumer impact | Use when |
+|-----------------|---------------|-----------------|----------|
+| Ready JSON `byte[]` | JSON shape + domain validation | `RawResponse`, no DTO graph | Read-heavy pass-through |
+| `record` | Domain object creation | Hessian decode + HTTP JSON serialize | Consumer inspects fields |
+| `List<record>` | Small bounded page | List + item allocation | Limited list/page |
+| `byte[] command` | JSON parse + command validation | Thin consumer | Lowest-allocation command |
+| `record command` | Typed command contract | Request encode + response decode | Readable business command |
+
+Ownership boundary:
+
+| Topic | Owner |
+|-------|-------|
+| DB constraint, uniqueness, mutation rule | Provider |
+| Ready response JSON format | Provider method returning `byte[]` |
+| HTTP auth, tenant, basic request reject | Consumer/gateway |
+| Large response streaming/file decision | Provider + consumer contract |
+| Contract compatibility | Shared API jar + contract tests |
+
+BEST: for hot reads and pass-through responses, return UTF-8 JSON `byte[]` from the provider and let
+the consumer forward it with `RawResponse.json(bytes)`. ACCEPTABLE: return `record` for small typed
+business responses. ANTI-PATTERN: produce a large nested `List<record>` and force the consumer JVM to
+serialize it again.
+
 Method shape catalog:
 
 | Method shape | Sample method | Why it exists | Cost |

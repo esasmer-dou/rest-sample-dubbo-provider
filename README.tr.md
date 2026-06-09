@@ -376,6 +376,33 @@ Consumer byte-array method'larını hâlâ `RawResponse.json(...)` ile tekrar DT
 response olarak taşıyabilir. Typed method'lar ise küçük business response'lar için normal Dubbo
 object contract örneğidir.
 
+### Provider Veri Şekli Kararı
+
+Provider method imzası consumer'ın memory ve p99 davranışını doğrudan etkiler. Bu yüzden method
+shape'i sadece API okunabilirliğiyle değil, veri akışı ve sorumluluk sınırıyla seçilmelidir.
+
+| Provider method | Provider sorumluluğu | Consumer etkisi | Ne zaman |
+|-----------------|----------------------|-----------------|----------|
+| `byte[]` hazır JSON | JSON shape + domain validation | `RawResponse` ile DTO graph yok | Read-heavy pass-through |
+| `record` | Domain object üretir | Hessian decode + HTTP JSON serialize | Consumer field okuyacaksa |
+| `List<record>` | Küçük bounded page üretir | Liste + item allocation | Limitli liste/sayfa |
+| `byte[] command` | JSON parse + command validation | Consumer ince kalır | En düşük allocation command |
+| `record command` | Typed command contract | Request encode + response decode | Okunabilir business command |
+
+Sorumluluk çizgisi:
+
+| Konu | Sahip |
+|------|------|
+| DB constraint, uniqueness, mutation rule | Provider |
+| Hazır response JSON formatı | `byte[]` dönen provider method |
+| HTTP auth, tenant, basic request reject | Consumer/gateway |
+| Büyük response streaming/file kararı | Provider + consumer contract |
+| Contract compatibility | Ortak API jar + contract test |
+
+BEST: hot read ve pass-through response için provider `byte[]` UTF-8 JSON döndürsün, consumer
+`RawResponse.json(bytes)` ile taşısın. ACCEPTABLE: küçük typed business response için `record` dönün.
+ANTI-PATTERN: büyük nested `List<record>` üretip consumer JVM'de tekrar JSON'a çevirtmek.
+
 Method veri yapısı kataloğu:
 
 | Method şekli | Sample method | Neden var? | Maliyet |
