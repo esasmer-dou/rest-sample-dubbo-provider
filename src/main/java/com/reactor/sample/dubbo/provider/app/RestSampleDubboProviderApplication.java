@@ -42,10 +42,10 @@ public final class RestSampleDubboProviderApplication {
             customerService.warmupDatabase();
             System.out.println("[rest-sample-dubbo-provider] database warmup completed");
         }
-        ZookeeperProviderRegistration registration = ZookeeperProviderRegistration.open(
-                config.registryAddress(),
-                config.registryRoot()
-        );
+        boolean registryEnabled = ProviderProperties.getBoolean("reactor.dubbo.registry-enabled");
+        ZookeeperProviderRegistration registration = registryEnabled
+                ? ZookeeperProviderRegistration.open(config.registryAddress(), config.registryRoot())
+                : null;
         PlainDubboProvider.ServiceExecutionConfig catalogExecution =
                 serviceExecutionConfig(NestedCatalogService.class);
         PlainDubboProvider.ServiceExecutionConfig customerExecution =
@@ -82,7 +82,7 @@ public final class RestSampleDubboProviderApplication {
             closeQuietly(customerCommandProvider);
             closeQuietly(customerProvider);
             closeQuietly(catalogProvider);
-            registration.close();
+            closeQuietly(registration);
             customerService.close();
             throw e;
         }
@@ -95,7 +95,7 @@ public final class RestSampleDubboProviderApplication {
             finalCustomerCommandProvider.close();
             finalCustomerProvider.close();
             finalCatalogProvider.close();
-            registration.close();
+            closeQuietly(registration);
             customerService.close();
             stop.countDown();
         }, "sample-dubbo-provider-shutdown"));
@@ -109,8 +109,13 @@ public final class RestSampleDubboProviderApplication {
                 + formatExecution(CustomerQueryService.class, customerExecution)
                 + ", "
                 + formatExecution(CustomerCommandService.class, customerCommandExecution));
-        System.out.println("[rest-sample-dubbo-provider] registered at "
-                + config.registryAddress() + "/" + config.registryRoot());
+        if (registryEnabled) {
+            System.out.println("[rest-sample-dubbo-provider] registered at "
+                    + config.registryAddress() + "/" + config.registryRoot());
+        } else {
+            System.out.println("[rest-sample-dubbo-provider] registry disabled; static consumers can use "
+                    + config.host() + ":" + config.port());
+        }
         stop.await();
     }
 

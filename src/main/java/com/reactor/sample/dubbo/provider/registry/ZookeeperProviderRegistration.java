@@ -1,5 +1,6 @@
 package com.reactor.sample.dubbo.provider.registry;
 
+import com.reactor.sample.dubbo.provider.dubbo.ProviderRegistration;
 import org.apache.dubbo.common.URL;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -14,7 +15,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-public final class ZookeeperProviderRegistration implements AutoCloseable {
+public final class ZookeeperProviderRegistration implements ProviderRegistration {
 
     private final ZooKeeper zookeeper;
     private final String registryRoot;
@@ -53,6 +54,7 @@ public final class ZookeeperProviderRegistration implements AutoCloseable {
         return registration;
     }
 
+    @Override
     public synchronized void register(Class<?> serviceType, URL providerUrl) throws Exception {
         String servicePath = "/" + registryRoot + "/" + URL.encode(serviceType.getName());
         String providersPath = servicePath + "/providers";

@@ -2,6 +2,7 @@ package com.reactor.sample.dubbo.provider.config;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Locale;
 import java.util.Properties;
 
 public final class ProviderProperties {
@@ -77,7 +78,7 @@ public final class ProviderProperties {
     }
 
     private static String envKey(String key) {
-        return key.toUpperCase().replace('.', '_').replace('-', '_');
+        return key.toUpperCase(Locale.ROOT).replace('.', '_').replace('-', '_');
     }
 
     private static Properties loadClasspathProperties() {

@@ -1,0 +1,10 @@
+.git
+target
+*.log
+*.tmp
+.idea
+.vscode
+.settings
+.classpath
+.project
+docker/postgres-data

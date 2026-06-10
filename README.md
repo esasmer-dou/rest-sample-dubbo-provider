@@ -37,13 +37,61 @@ registration, HikariCP pool size, and per-interface/per-method concurrency limit
 | DB-backed query | `CustomerQueryService`<br>small DB pool | <small><code>sample.db.maximum-pool-size=2</code><br><code>dubbo.provider.service.CustomerQueryService.max-concurrent=1-2</code></small> | p99 bounded by DB capacity |
 | Write command | Compact JSON command bytes | <small><code>dubbo.provider.service.CustomerCommandService.method.&lt;method&gt;.max-concurrent=1</code><br><code>sample.db.auto-commit=true</code></small> | Retries off, fail-fast on saturation |
 | Typed command | `CreateCustomerCommand -> CustomerMutationResult` | <small><code>dubbo.provider.service.CustomerCommandService.method.createCustomerTyped.max-concurrent=1</code><br>aligned with Hikari</small> | Cleaner contract<br>costlier than byte pass-through |
-| Kubernetes discovery | Register every interface in ZooKeeper | `reactor.dubbo.registry-address=zookeeper://...:2181` | `zookeeper-discovery` can reconnect |
+| Kubernetes discovery | Register every interface in ZooKeeper | <small><code>reactor.dubbo.registry-enabled=true</code><br><code>reactor.dubbo.registry-address=zookeeper://...:2181</code></small> | `zookeeper-discovery` can reconnect |
+| Static Service DNS | No ZooKeeper registration; provider only exposes `dubbo://` | <small><code>reactor.dubbo.registry-enabled=false</code><br><code>dubbo.provider.bind-host=0.0.0.0</code></small> | Consumer uses `reactor.dubbo.providers=service-name:20880` |
 | Local/static test | Bind `127.0.0.1:20880` or container DNS | `dubbo.provider.host`<br>`bind-host`, `port` | Static provider list points here |
 
 Recommended starting point: keep provider interfaces small and return ready JSON bytes for
 pass-through read APIs. Returning records, lists, maps, strings, and primitive values is valid when
 the consumer must make typed business decisions. Avoid returning a large nested object graph when the
 consumer immediately serializes it back to JSON.
+
+## Scenario-Specific Provider Images
+
+The provider also has scenario-specific images. Do not use the DB/ZooKeeper-capable image for a
+catalog-only static JSON demo.
+
+| Image | Build command | Exports | Intentionally absent | Local smoke evidence |
+|-------|---------------|---------|----------------------|----------------------|
+| `rest-sample-dubbo-provider:catalog-static-jlink` | `docker build -f Dockerfile.jlink.catalog-static -t rest-sample-dubbo-provider:catalog-static-jlink .` | `CatalogJsonService#getNestedCatalogJson()` only. | PostgreSQL, HikariCP, ActiveJDBC, ZooKeeper registration, customer services, typed catalog DTO methods. | App jar about `9.3M`, JRE `80M`, RSS about `45 MiB` after idle. |
+| `rest-sample-dubbo-provider:jlink` | `docker build -f Dockerfile.jlink -t rest-sample-dubbo-provider:jlink .` | Catalog, customer query, customer command interfaces. | Nothing sample-related; this is the full DB-capable provider image. | Image about `179MB`; use when DB/customer examples are needed. |
+
+Why `catalog-static-jlink` still includes `java.desktop` and `java.sql`: Apache Dubbo's official
+provider runtime initializes Java Beans and Hessian/SQL-aware serialization classes even for a
+raw `byte[]` method. The image removes DB/ZooKeeper/customer application dependencies, but it cannot
+remove those JDK modules while still using the official Dubbo provider stack. Removing them caused
+runtime provider failures during smoke testing.
+
+Best pairing:
+
+```text
+rest-sample-dubbo-provider:catalog-static-jlink
+rest-sample-dubbo-consumer:native-static-jlink
+```
+
+This pair is for one static provider address and one ready-JSON read API. If you need typed DTOs,
+DB queries, write commands, or ZooKeeper registration, use the full provider image and the matching
+consumer image instead.
+
+## Typed DTO And Hessian Security
+
+Dubbo/Hessian deserialization is intentionally strict. If a provider method accepts a typed DTO such
+as `CreateCustomerCommand`, the DTO package must be explicitly allowlisted:
+
+```text
+src/main/resources/security/serialize.allowlist
+```
+
+Current sample entry:
+
+```text
+com.reactor.rust.dubbo.sample.dto
+```
+
+Keep this narrow. Add only DTO packages that your provider really accepts over Dubbo. Do not disable
+Dubbo serialization security globally just to make a sample request pass. If this file is missing,
+typed command calls can fail with provider status `40` and a log similar to "Serialized class ... is
+not in allow list".
 
 ## Production Recipes
 
@@ -56,6 +104,7 @@ dubbo.provider.application-name=rest-sample-dubbo-provider
 dubbo.provider.host=provider-pod-ip-or-headless-service-dns
 dubbo.provider.bind-host=0.0.0.0
 dubbo.provider.port=20880
+reactor.dubbo.registry-enabled=true
 reactor.dubbo.registry-address=zookeeper://zookeeper-client.platform.svc.cluster.local:2181
 reactor.dubbo.registry-root=dubbo
 ```
@@ -66,8 +115,36 @@ Effect:
 |----------|--------------|-----------------|
 | `dubbo.provider.host` | ZooKeeper provider URL host | Must be reachable by consumer pods.<br>Use per-pod IP or headless DNS for real discovery.<br>Do not publish `127.0.0.1` in K8s. |
 | `dubbo.provider.bind-host` | Local interface the provider listens on | Use `0.0.0.0` in containers. |
+| `reactor.dubbo.registry-enabled` | Turns ZooKeeper registration on/off | Keep `true` for discovery mode. Set `false` when consumers use static K8s Service DNS. |
 | `reactor.dubbo.registry-address` | ZooKeeper registry endpoint | Use Kubernetes DNS, not a local desktop address. |
 | `reactor.dubbo.registry-root` | Registry namespace | Keep it aligned with consumer `reactor.dubbo.registry-root`. |
+
+### Recipe 1B: Provider With Static Kubernetes Service DNS
+
+Use this when you do not want ZooKeeper and your consumer calls a stable Kubernetes Service such as
+`rest-sample-dubbo-provider:20880`. In this mode Kubernetes owns endpoint load balancing and the
+provider does not create a ZooKeeper session.
+
+```properties
+dubbo.provider.application-name=rest-sample-dubbo-provider
+dubbo.provider.host=rest-sample-dubbo-provider
+dubbo.provider.bind-host=0.0.0.0
+dubbo.provider.port=20880
+reactor.dubbo.registry-enabled=false
+```
+
+Consumer side:
+
+```properties
+sample.dubbo.discovery=static
+reactor.dubbo.providers=rest-sample-dubbo-provider:20880
+```
+
+Effect: the provider still exports the same Dubbo interfaces, but it skips ZooKeeper registration.
+This removes the provider-side ZooKeeper runtime dependency from the active path. Use it when all
+provider replicas are reachable behind one stable Service name. Use ZooKeeper discovery when
+interfaces move independently, multiple provider groups must be discovered dynamically, or you need
+registry-driven provider membership instead of Kubernetes Service membership.
 
 ### Recipe 2: DB-Backed Query With HikariCP
 
@@ -113,23 +190,30 @@ Effect: command methods fail fast when the provider is saturated instead of buil
 queue. This is safer for memory and tail latency. If callers require guaranteed command completion,
 put a durable queue/workflow in front of the provider; do not hide it inside Dubbo request queues.
 
-### Recipe 4: Local Docker Test
-
-Use this for developer machines where ZooKeeper and PostgreSQL run as containers.
+### Recipe 4: Docker Desktop With PostgreSQL
 
 ```powershell
-docker run -d --name rust-java-dubbo-zookeeper -p 2181:2181 zookeeper:3.7.2
-docker run -d --name rest-sample-postgres `
-  -e POSTGRES_DB=reactor_sample `
-  -e POSTGRES_USER=reactor `
-  -e POSTGRES_PASSWORD=reactor `
-  -p 15432:5432 postgres:16-alpine
-
-mvn -q exec:java
+docker compose -f docker/docker-compose.yml up --build
 ```
 
-Effect: the provider publishes local `dubbo://127.0.0.1:20880` URLs by default. In Docker networks or
-Kubernetes, change the published host to a reachable service/container DNS name.
+This starts:
+
+- PostgreSQL 16 on host port `15432`.
+- `rest-sample-dubbo-provider` on `dubbo://localhost:20880`.
+- ZooKeeper registration disabled with `REACTOR_DUBBO_REGISTRY_ENABLED=false`.
+
+If Docker Desktop already has a manually started PostgreSQL container on port `15432`, stop that
+container first or change the published PostgreSQL port in `docker/docker-compose.yml`.
+
+Stop it with:
+
+```powershell
+docker compose -f docker/docker-compose.yml down
+```
+
+Effect: this is the simplest Docker Desktop path for the sample consumer. Start the consumer with
+`sample.dubbo.discovery=static` and `reactor.dubbo.providers=127.0.0.1:20880`. If you need
+ZooKeeper discovery, use Recipe 1 instead and explicitly enable registry registration.
 
 ### Recipe 5: Read-Heavy Precomputed Catalog
 
@@ -180,6 +264,7 @@ Use this when provider pods are restarted by deployment rollout or node movement
 ```properties
 dubbo.provider.bind-host=0.0.0.0
 dubbo.provider.host=provider-pod-ip-or-headless-service-dns
+reactor.dubbo.registry-enabled=true
 reactor.dubbo.registry-address=zookeeper://zookeeper-client.platform.svc.cluster.local:2181
 reactor.dubbo.registry-root=dubbo
 ```
@@ -838,7 +923,9 @@ Important properties:
 | `dubbo.provider.host` | Host advertised in the Dubbo provider URL. |
 | `dubbo.provider.bind-host` | Local bind host. Use `0.0.0.0` in containers if needed. |
 | `dubbo.provider.port` | Dubbo provider port. Default sample value is `20880`. |
-| `reactor.dubbo.registry-address` | ZooKeeper registry address. |
+| `reactor.dubbo.registry-enabled` | Enables ZooKeeper registration. Sample default is `false` for static Service DNS mode; set `true` for ZooKeeper discovery. |
+| `reactor.dubbo.registry-address` | ZooKeeper registry address. Used only when `reactor.dubbo.registry-enabled=true`. |
+| `reactor.dubbo.registry-root` | ZooKeeper namespace. Used only when `reactor.dubbo.registry-enabled=true`. |
 | `dubbo.provider.service.default.max-concurrent` | Default concurrent invocation limit for exported interfaces. |
 | `dubbo.provider.service.NestedCatalogService.max-concurrent` | Concurrent invocation limit for catalog provider methods. |
 | `dubbo.provider.service.NestedCatalogService.method.*.max-concurrent` | Optional method-level catalog overrides for typed/list methods. |
@@ -860,12 +947,20 @@ Prerequisites:
 
 - Java 21
 - Maven 3.9+
-- Docker for ZooKeeper and PostgreSQL
+- Docker for PostgreSQL; ZooKeeper is needed only when you set `reactor.dubbo.registry-enabled=true`
 
-Start ZooKeeper:
+Default sample mode is static/no-ZooKeeper. Start ZooKeeper only if you want to test discovery mode:
 
 ```powershell
 docker run -d --name rust-java-dubbo-zookeeper -p 2181:2181 zookeeper:3.7.2
+```
+
+For static mode, you can skip ZooKeeper. The packaged default is already `false`, but setting the
+environment variable makes the runtime choice explicit:
+
+```powershell
+$env:REACTOR_DUBBO_REGISTRY_ENABLED="false"
+mvn -q exec:java
 ```
 
 Start PostgreSQL:
@@ -955,6 +1050,58 @@ mvn -q exec:java
 
 Use a small Hikari pool first. Increasing DB pool size without measuring provider CPU, DB capacity,
 and consumer concurrency can worsen tail latency.
+
+### OpenJ9 21 jlink Minimum Image
+
+Use `Dockerfile.jlink` when you want the provider sample to run on a custom OpenJ9 runtime instead
+of a full JRE image. The image is still a real Dubbo provider with Hikari/PostgreSQL support; jlink
+only trims unused Java runtime modules.
+
+Build:
+
+```powershell
+docker build -f Dockerfile.jlink -t rest-sample-dubbo-provider:jlink .
+```
+
+Minimum provider smoke without PostgreSQL warmup:
+
+```powershell
+docker network create reactor-jlink-smoke
+
+docker run --rm --name rest-sample-dubbo-provider `
+  --network reactor-jlink-smoke `
+  -p 20880:20880 `
+  -e DUBBO_PROVIDER_HOST=rest-sample-dubbo-provider `
+  -e DUBBO_PROVIDER_BIND_HOST=0.0.0.0 `
+  -e REACTOR_DUBBO_REGISTRY_ENABLED=false `
+  -e SAMPLE_DB_SCHEMA_INIT=false `
+  -e SAMPLE_DB_WARMUP=false `
+  rest-sample-dubbo-provider:jlink
+```
+
+Provider with PostgreSQL/Hikari enabled:
+
+```powershell
+docker run --rm --name rest-sample-dubbo-provider `
+  --network reactor-jlink-smoke `
+  -p 20880:20880 `
+  -e DUBBO_PROVIDER_HOST=rest-sample-dubbo-provider `
+  -e DUBBO_PROVIDER_BIND_HOST=0.0.0.0 `
+  -e REACTOR_DUBBO_REGISTRY_ENABLED=false `
+  -e SAMPLE_DB_JDBC_URL=jdbc:postgresql://postgres:5432/reactor_sample `
+  -e SAMPLE_DB_USERNAME=reactor `
+  -e SAMPLE_DB_PASSWORD=reactor `
+  -e SAMPLE_DB_MAXIMUM_POOL_SIZE=2 `
+  -e SAMPLE_DB_MINIMUM_IDLE=0 `
+  rest-sample-dubbo-provider:jlink
+```
+
+Notes:
+
+- Do not remove `java.desktop` from `JAVA_MODULES`. Dubbo uses Java Beans classes even in a headless provider.
+- `binutils` is installed only in the build stage because `jlink --strip-debug` needs `objcopy`. It is not copied to the runtime image.
+- Local smoke in this workspace observed about `55.8 MiB` provider RSS with DB warmup disabled. DB-backed runs will be higher because Hikari, JDBC, schema init, and active connections add memory.
+- If `REACTOR_DUBBO_REGISTRY_ENABLED=false`, ZooKeeper is not required; the consumer can call the provider through Docker/Kubernetes service DNS.
 
 ## Troubleshooting
 

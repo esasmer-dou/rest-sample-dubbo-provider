@@ -1,6 +1,5 @@
 package com.reactor.sample.dubbo.provider.dubbo;
 
-import com.reactor.sample.dubbo.provider.registry.ZookeeperProviderRegistration;
 import org.apache.dubbo.common.URL;
 import org.apache.dubbo.common.extension.ExtensionLoader;
 import org.apache.dubbo.rpc.Exporter;
@@ -48,23 +47,14 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
             ProviderConfig config,
             ServiceExecutionConfig executionConfig
     ) throws Exception {
-        ZookeeperProviderRegistration registration = ZookeeperProviderRegistration.open(
-                config.registryAddress(),
-                config.registryRoot()
-        );
-        try {
-            return export(serviceType, service, config, registration, executionConfig, true);
-        } catch (Exception e) {
-            registration.close();
-            throw e;
-        }
+        return export(serviceType, service, config, null, executionConfig, false);
     }
 
     public static <T> PlainDubboProvider<T> export(
             Class<T> serviceType,
             T service,
             ProviderConfig config,
-            ZookeeperProviderRegistration sharedRegistration
+            ProviderRegistration sharedRegistration
     ) throws Exception {
         return export(serviceType, service, config, sharedRegistration, ServiceExecutionConfig.unbounded());
     }
@@ -73,7 +63,7 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
             Class<T> serviceType,
             T service,
             ProviderConfig config,
-            ZookeeperProviderRegistration sharedRegistration,
+            ProviderRegistration sharedRegistration,
             ServiceExecutionConfig executionConfig
     ) throws Exception {
         return export(serviceType, service, config, sharedRegistration, executionConfig, false);
@@ -83,7 +73,7 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
             Class<T> serviceType,
             T service,
             ProviderConfig config,
-            ZookeeperProviderRegistration registration,
+            ProviderRegistration registration,
             ServiceExecutionConfig executionConfig,
             boolean closeRegistration
     ) throws Exception {
@@ -97,7 +87,9 @@ public final class PlainDubboProvider<T> implements AutoCloseable {
         Exporter<T> exporter = protocol.export(invoker);
 
         try {
-            registration.register(serviceType, exportUrl);
+            if (registration != null) {
+                registration.register(serviceType, exportUrl);
+            }
             return new PlainDubboProvider<>(exporter, closeRegistration ? registration : null);
         } catch (Exception e) {
             exporter.unexport();
