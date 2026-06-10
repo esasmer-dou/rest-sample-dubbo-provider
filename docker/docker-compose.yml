@@ -20,7 +20,7 @@ services:
   provider:
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: docker/images/Dockerfile
     image: rest-sample-dubbo-provider:local
     depends_on:
       postgres:

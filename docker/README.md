@@ -5,6 +5,9 @@ This Docker setup starts:
 - `postgres`: PostgreSQL 16 for the sample database.
 - `provider`: `rest-sample-dubbo-provider` on `dubbo://localhost:20880`.
 
+Image definitions live under `docker/images/`. The compose file keeps the project root as the build
+context and points to `docker/images/Dockerfile`.
+
 ZooKeeper is disabled by default because the consumer sample can use static Service DNS/provider
 address mode.
 
@@ -48,6 +51,9 @@ Bu Docker yapısı iki container başlatır:
 
 - `postgres`: Sample database için PostgreSQL 16.
 - `provider`: `dubbo://localhost:20880` üzerinden çalışan `rest-sample-dubbo-provider`.
+
+Image tanımları `docker/images/` altında durur. Compose dosyası build context olarak proje kökünü
+kullanır ve `docker/images/Dockerfile` dosyasını işaret eder.
 
 ZooKeeper default olarak kapalıdır. Consumer sample static provider adresiyle bağlanabilir.
 

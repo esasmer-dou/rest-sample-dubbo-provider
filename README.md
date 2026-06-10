@@ -53,8 +53,9 @@ catalog-only static JSON demo.
 
 | Image | Build command | Exports | Intentionally absent | Local smoke evidence |
 |-------|---------------|---------|----------------------|----------------------|
-| `rest-sample-dubbo-provider:catalog-static-jlink` | `docker build -f Dockerfile.jlink.catalog-static -t rest-sample-dubbo-provider:catalog-static-jlink .` | `CatalogJsonService#getNestedCatalogJson()` only. | PostgreSQL, HikariCP, ActiveJDBC, ZooKeeper registration, customer services, typed catalog DTO methods. | App jar about `9.3M`, JRE `80M`, RSS about `45 MiB` after idle. |
-| `rest-sample-dubbo-provider:jlink` | `docker build -f Dockerfile.jlink -t rest-sample-dubbo-provider:jlink .` | Catalog, customer query, customer command interfaces. | Nothing sample-related; this is the full DB-capable provider image. | Image about `179MB`; use when DB/customer examples are needed. |
+| `rest-sample-dubbo-provider:catalog-static-jlink` | `docker build -f docker/images/Dockerfile.jlink.catalog-static -t rest-sample-dubbo-provider:catalog-static-jlink .` | `CatalogJsonService#getNestedCatalogJson()` only. | PostgreSQL, HikariCP, ActiveJDBC, ZooKeeper registration, customer services, typed catalog DTO methods. | App jar about `9.3M`, JRE `80M`, RSS about `45 MiB` after idle. |
+| `rest-sample-dubbo-provider:db-query-jlink` | `docker build -f docker/images/Dockerfile.jlink.db-query -t rest-sample-dubbo-provider:db-query-jlink .` | `CustomerQueryService` only, backed by PostgreSQL/HikariCP. ZooKeeper registration can be enabled or disabled. | Catalog services and `CustomerCommandService`; no POST/PATCH/DELETE Dubbo command surface. | Local smoke: query REST calls returned `200`; command REST call returned expected `503`; provider RSS about `59 MiB`. |
+| `rest-sample-dubbo-provider:jlink` | `docker build -f docker/images/Dockerfile.jlink -t rest-sample-dubbo-provider:jlink .` | Catalog, customer query, customer command interfaces. | Nothing sample-related; this is the full DB-capable provider image. | Image about `179MB`; use when DB/customer examples are needed. |
 
 Why `catalog-static-jlink` still includes `java.desktop` and `java.sql`: Apache Dubbo's official
 provider runtime initializes Java Beans and Hessian/SQL-aware serialization classes even for a
@@ -72,6 +73,12 @@ rest-sample-dubbo-consumer:native-static-jlink
 This pair is for one static provider address and one ready-JSON read API. If you need typed DTOs,
 DB queries, write commands, or ZooKeeper registration, use the full provider image and the matching
 consumer image instead.
+
+Use `db-query-jlink` when the provider should read PostgreSQL but must not expose write commands.
+That image is useful for query-only bounded services: customer lookup, customer list, segment filter,
+and stats. The same container can run with `REACTOR_DUBBO_REGISTRY_ENABLED=false` behind a Kubernetes
+Service DNS name, or with `REACTOR_DUBBO_REGISTRY_ENABLED=true` when the consumer must discover
+providers through ZooKeeper.
 
 ## Typed DTO And Hessian Security
 
@@ -170,6 +177,78 @@ Effect:
 | `sample.db.minimum-idle=0` | Idle DB connections retained | Good for low-RSS samples; set higher only if cold DB acquisition hurts p99. |
 | `CustomerQueryService.max-concurrent` | Provider-side query bulkhead | Keeps provider queues aligned with DB capacity. |
 | Method override | Per-method hard cap | Protects one expensive method without lowering every method on the interface. |
+
+### Recipe 2B: DB Query-Only Provider Image
+
+Use this when the provider only serves read/query APIs and must not publish command methods. This is
+the right shape for services where POST/PATCH/DELETE are owned by another bounded command service or
+by a workflow/queue, but REST consumers still need fast customer reads.
+
+Build:
+
+```powershell
+docker build -f docker/images/Dockerfile.jlink.db-query -t rest-sample-dubbo-provider:db-query-jlink .
+```
+
+Static Kubernetes Service DNS mode:
+
+```yaml
+env:
+  - name: REACTOR_DUBBO_REGISTRY_ENABLED
+    value: "false"
+  - name: DUBBO_PROVIDER_HOST
+    value: "rest-sample-dubbo-provider"
+  - name: DUBBO_PROVIDER_BIND_HOST
+    value: "0.0.0.0"
+  - name: SAMPLE_DB_JDBC_URL
+    value: "jdbc:postgresql://postgresql.platform.svc.cluster.local:5432/reactor_sample"
+  - name: SAMPLE_DB_USERNAME
+    valueFrom:
+      secretKeyRef:
+        name: customer-db
+        key: username
+  - name: SAMPLE_DB_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: customer-db
+        key: password
+  - name: SAMPLE_DB_MAXIMUM_POOL_SIZE
+    value: "2"
+  - name: SAMPLE_DB_MINIMUM_IDLE
+    value: "0"
+  - name: DUBBO_PROVIDER_SERVICE_CUSTOMERQUERYSERVICE_MAX_CONCURRENT
+    value: "2"
+```
+
+ZooKeeper discovery mode:
+
+```yaml
+env:
+  - name: REACTOR_DUBBO_REGISTRY_ENABLED
+    value: "true"
+  - name: REACTOR_DUBBO_REGISTRY_ADDRESS
+    value: "zookeeper://zookeeper-client.platform.svc.cluster.local:2181"
+  - name: REACTOR_DUBBO_REGISTRY_ROOT
+    value: "dubbo"
+  - name: DUBBO_PROVIDER_HOST
+    valueFrom:
+      fieldRef:
+        fieldPath: status.podIP
+  - name: DUBBO_PROVIDER_BIND_HOST
+    value: "0.0.0.0"
+```
+
+Expected behavior:
+
+| Call type | Result with `db-query-jlink` | Why |
+|-----------|------------------------------|-----|
+| `CustomerQueryService#getDatabaseCustomersJson` | Works | Query interface is exported and DB/Hikari is active. |
+| `CustomerQueryService#getCustomerStats` | Works | Small stats query, method cap defaults to `1`. |
+| `CustomerCommandService#createCustomer*` | Fails fast | Command interface is intentionally not exported. The consumer should return an unavailable/503-style error instead of hiding a write path in the query provider. |
+
+Do not use this image if the same provider must handle POST/PATCH/DELETE commands. Use the full
+`Dockerfile.jlink` image or split commands into a separate provider with its own DB pool and
+concurrency limits.
 
 ### Recipe 3: Write Commands Without Queue Growth
 
@@ -1060,7 +1139,7 @@ only trims unused Java runtime modules.
 Build:
 
 ```powershell
-docker build -f Dockerfile.jlink -t rest-sample-dubbo-provider:jlink .
+docker build -f docker/images/Dockerfile.jlink -t rest-sample-dubbo-provider:jlink .
 ```
 
 Minimum provider smoke without PostgreSQL warmup:
@@ -1101,6 +1180,7 @@ Notes:
 - Do not remove `java.desktop` from `JAVA_MODULES`. Dubbo uses Java Beans classes even in a headless provider.
 - `binutils` is installed only in the build stage because `jlink --strip-debug` needs `objcopy`. It is not copied to the runtime image.
 - Local smoke in this workspace observed about `55.8 MiB` provider RSS with DB warmup disabled. DB-backed runs will be higher because Hikari, JDBC, schema init, and active connections add memory.
+- `docker/images/Dockerfile.jlink.db-query` builds with `mvn clean package` under the `db-query-provider` profile so old compiled classes cannot leak command/catalog services into the query-only jar.
 - If `REACTOR_DUBBO_REGISTRY_ENABLED=false`, ZooKeeper is not required; the consumer can call the provider through Docker/Kubernetes service DNS.
 
 ## Troubleshooting
