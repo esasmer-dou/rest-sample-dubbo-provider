@@ -33,7 +33,7 @@ registration, HikariCP pool size ve interface/method bazlı concurrency limitler
 
 | Senaryo | Provider tasarımı | Ana ayar | Consumer etkisi |
 |----------|-------------------|----------|-----------------|
-| Read-heavy lookup/catalog | Küçük read interface<br>UTF-8 JSON `byte[]` | <small><code>dubbo.provider.service.NestedCatalogService.max-concurrent=16</code></small> | `RawResponse.json(bytes)`<br>DTO graph yok |
+| Read-heavy lookup/catalog | Küçük read interface<br>UTF-8 JSON `byte[]` | <small><code>dubbo.provider.service.NestedCatalogService.max-concurrent=16</code></small> | Native handle: `RawResponse.nativeResponse(...)`<br>Java bytes: `RawResponse.json(bytes)`<br>DTO graph yok |
 | Typed lookup/küçük sayfa | `record`, `String`, primitive,<br>`List<record>`, `Map<String,String>` | <small><code>dubbo.provider.service.NestedCatalogService.method.&lt;method&gt;.max-concurrent=4-16</code><br>strict result limit</small> | Typed business karar mümkün<br>Hessian/object allocation var |
 | DB-backed query | `CustomerQueryService`<br>küçük DB pool | <small><code>sample.db.maximum-pool-size=2</code><br><code>dubbo.provider.service.CustomerQueryService.max-concurrent=1-2</code></small> | p99 DB kapasitesiyle sınırlanır |
 | Write command | Compact JSON command bytes | <small><code>dubbo.provider.service.CustomerCommandService.method.&lt;method&gt;.max-concurrent=1</code><br><code>sample.db.auto-commit=true</code></small> | Retry kapalı, saturation'da fail-fast |
@@ -321,9 +321,10 @@ public final class NestedCatalogServiceImpl implements NestedCatalogService {
 dubbo.provider.service.NestedCatalogService.max-concurrent=32
 ```
 
-Etkisi: provider her çağrıda aynı JSON'u yeniden üretmez; consumer bu bytes'ı
-`RawResponse.json(bytes)` ile forward eder. Catalog değişiyorsa bu byte array'i timer, event veya
-admin operation ile açık bir şekilde yenileyin.
+Etkisi: provider her çağrıda aynı JSON'u yeniden üretmez. Consumer native response handle aldıysa
+`RawResponse.nativeResponse(handle.nativeId())` ile forward eder. Java payload'ı incelemek zorunda
+kaldığı için bytes zaten elindeyse `RawResponse.json(bytes)` kullanır. Catalog değişiyorsa bu byte
+array'i timer, event veya admin operation ile açık bir şekilde yenileyin.
 
 ### Reçete 6: Ayrı Kapasiteye Sahip Birden Fazla Interface
 
@@ -427,15 +428,15 @@ Provider her interface için ZooKeeper altında ayrı path'e register olur:
 /dubbo/com.reactor.rust.dubbo.sample.CustomerQueryService/providers
 ```
 
-## `rust-java-rest` 3.2.2 Bu Provider'ı Nasıl Etkiler?
+## `rust-java-rest` 3.2.x Bu Provider'ı Nasıl Etkiler?
 
 Bu provider `rust-java-rest` bağımlılığı almaz; bu şekilde kalması doğrudur. Provider'ın görevi,
 `rest-sample-dubbo-consumer` uygulamasının v3.2.x low-overhead response yolunu kullanabileceği küçük bir
 Dubbo kontratı expose etmektir.
 
-| Provider tercihi | v3.2.2 consumer üzerindeki etkisi |
+| Provider tercihi | v3.2.x consumer üzerindeki etkisi |
 |------------------|--------------------------------|
-| UTF-8 JSON'u `byte[]` olarak dönmek | Consumer `RawResponse.json(bytes)` döner ve ikinci DTO graph kurmaz. |
+| UTF-8 JSON'u `byte[]` olarak dönmek | Native handle route'larda consumer `RawResponse.nativeResponse(handle.nativeId())` kullanır; Java bytes'ı incelemek zorundaysa `RawResponse.json(bytes)` kullanır. İki yol da ikinci DTO graph kurmaz. |
 | Interface'leri küçük tutmak | Consumer timeout, backpressure ve metrics değerlerini RPC alanına göre tune edebilir. |
 | Method concurrency değerlerini bounded tutmak | Provider overload heap, DB pool veya Netty queue büyümesine dönüşmeden görünür olur. |
 | DB method limitlerini Hikari ile hizalamak | DB saturation derin queue yerine fail-fast verdiği için consumer p99 daha stabil kalır. |
@@ -449,9 +450,10 @@ Dubbo kontratı expose etmektir.
 Provider UTF-8 JSON bytes yazıyor ve consumer JSON content type ile dönüyorsa Türkçe karakterler bu
 akışta güvenli taşınır. JSON üretirken platform-default encoding kullanmayın.
 
-BEST: read-heavy pass-through JSON için `byte[]` dönmek. ACCEPTABLE: consumer typed business karar
-verecekse record dönmek. ANTI-PATTERN: consumer hemen tekrar JSON'a çevirecekse büyük nested object
-graph dönmek.
+BEST: read-heavy pass-through JSON için `byte[]` dönmek ve consumer native handle aldıysa
+`RawResponse.nativeResponse(handle.nativeId())` kullanmak. ACCEPTABLE: consumer typed business karar
+verecekse record dönmek veya Java bytes'ı bilinçli şekilde incelediyse `RawResponse.json(bytes)`
+kullanmak. ANTI-PATTERN: consumer hemen tekrar JSON'a çevirecekse büyük nested object graph dönmek.
 
 ### Production Dependency Sınırı
 
@@ -466,7 +468,7 @@ Memory ve performance analizi yaparken scope'ları ayrı tutun:
 | Consumer | Normal `rust-java-rest` dependency ve `java-rust-dubbo` adapter | Framework `rust-java-rest-*-sample.jar` |
 | Framework sample jar | Bundled demo/benchmark route'ları | Provider veya consumer pod sizing kanıtı |
 
-`rust-java-rest` `3.2.2` normal jar ve `core-runtime` jar framework sample/benchmark package'larını
+`rust-java-rest` `3.2.x` normal jar ve `core-runtime` jar framework sample/benchmark package'larını
 içermez. Bu consumer'ın production-like kalmasına yardım eder; fakat provider classpath'ini
 değiştirmez çünkü provider zaten framework artifact'ini kullanmaz.
 
@@ -484,6 +486,41 @@ bağımsız tune etmeyin:
 BEST: küçük provider limitleriyle başlayıp provider CPU, DB pool wait, consumer 503 oranı, p99 latency
 ve RSS'i birlikte ölçerek artırmak. ANTI-PATTERN: provider DB pool zaten saturation altındayken
 consumer worker sayısını artırmak.
+
+### Provider Hot Path Notları
+
+Provider HikariCP ve ActiveJDBC dependency'lerini korur; çünkü bu sample Spring olmadan mevcut bir
+database provider'ın nasıl bağlanacağını da gösterir. Fakat bu, hot query'lerin tamamı ActiveJDBC
+`Map` path'i üzerinden geçmeli demek değildir.
+
+Güncel provider benchmark edilen DB-backed route'larda daha hafif yolu kullanır:
+
+| Alan | Güncel implementasyon | Neden önemli? |
+|------|-----------------------|---------------|
+| `GET /api/v1/customers/db` provider method'u | Hikari `PreparedStatement` + direkt `ResultSet` -> `SampleCustomer` record | Hot read path'te ActiveJDBC `Map` allocation'ı oluşmaz. |
+| `customerExists` / `getCustomerDisplayName` | Sadece `1` veya `full_name` okuyan dar SQL | Scalar REST response için full customer row okunmaz. |
+| `patchCustomerSegment` / `patchCustomerStatus` SQL | Sabit prepared update statement | Command hot path'te dynamic SQL formatlama yoktur. |
+| Command JSON response | `StringBuilder` JSON writer | Her command response'ta `String.formatted(...)` parser/allocation maliyeti oluşmaz. |
+| Read-heavy pass-through JSON | UTF-8 `byte[]` JSON | Consumer native response handle veya `RawResponse.json(bytes)` ile DTO graph kurmadan dönebilir. |
+
+Bu hâlâ bir sample provider'dır; genel ORM tercihi dikte etmez. ActiveJDBC basit örnekler ve legacy
+provider kodu için faydalı olabilir. Ancak bir provider method'u c64/c256 hot path'teyse explicit SQL,
+dar kolon seçimi, bounded result size ve provider/consumer admission hizalaması gerekir. Yavaş
+provider, consumer worker artırarak düzelmez.
+
+### Write Contention Kuralı
+
+Hot-row write baskısı distributed write'tan ayrı ele alınmalıdır:
+
+| Write paterni | Provider davranışı | Consumer davranışı |
+|---------------|--------------------|--------------------|
+| Tek customer id'ye çok sayıda update | PostgreSQL row lock bottleneck olur. | `sample.command.customer-key-admission.max-concurrent-per-key=1` fazla işi erken reddetmelidir. |
+| Çok farklı id'ye dağılan update | Ana limit DB pool ve provider command bulkhead olur. | Useful 2xx RPS artıyor, p99/RSS bozulmuyorsa route admission daha geniş olabilir. |
+| Retry edilen create/patch/delete | Idempotency yoksa duplicate side-effect oluşabilir. | Command route'larında `reactor.dubbo.retries=0` kalsın. |
+
+BEST: write command'ları `requestId` ile idempotent tasarlamak, provider method concurrency değerini
+DB pool'a yakın tutmak ve tek business key overload olduğunda consumer'ın fail-fast davranmasına izin
+vermek. ANTI-PATTERN: hot-row lock beklemelerini saniyelik p99 spike'a çevirecek global queue artışı.
 
 ## Mimari Akış
 
@@ -565,9 +602,11 @@ Sorumluluk çizgisi:
 | Büyük response streaming/file kararı | Provider + consumer contract |
 | Contract compatibility | Ortak API jar + contract test |
 
-BEST: hot read ve pass-through response için provider `byte[]` UTF-8 JSON döndürsün, consumer
-`RawResponse.json(bytes)` ile taşısın. ACCEPTABLE: küçük typed business response için `record` dönün.
-ANTI-PATTERN: büyük nested `List<record>` üretip consumer JVM'de tekrar JSON'a çevirtmek.
+BEST: hot read ve pass-through response için provider `byte[]` UTF-8 JSON döndürsün, consumer native
+handle aldıysa `RawResponse.nativeResponse(handle.nativeId())` ile taşısın. ACCEPTABLE: consumer
+payload'ı incelemek veya dönüştürmek için Java bytes aldıysa `RawResponse.json(bytes)` kullansın ya
+da küçük typed business response için `record` dönülsün. ANTI-PATTERN: büyük nested `List<record>`
+üretip consumer JVM'de tekrar JSON'a çevirtmek.
 
 Method veri yapısı kataloğu:
 
@@ -852,14 +891,16 @@ yapacağına göre verilmelidir.
 
 | Provider dönüş tipi | En uygun use case | Consumer maliyeti |
 |---------------------|-------------------|-------------------|
-| UTF-8 JSON taşıyan `byte[]` | Consumer cevabı HTTP JSON olarak forward eder. | En düşük. Consumer `RawResponse.json(bytes)` kullanır, ikinci DTO graph kurmaz. |
+| UTF-8 JSON taşıyan `byte[]` | Consumer cevabı HTTP JSON olarak forward eder. | En düşük. Native handle route'larda `RawResponse.nativeResponse(handle.nativeId())`, Java-byte route'larda `RawResponse.json(bytes)` kullanılır. İkinci DTO graph kurulmaz. |
 | `record` DTO | Consumer typed data ile filtreleme, validation, enrichment veya business karar yapar. | Hessian2 decode Java object graph oluşturur; HTTP response tekrar JSON serialize edebilir. |
 | Plain class DTO | Legacy framework veya serializer record desteklemiyorsa. | Record'a benzer, genelde daha mutable ve daha az explicit. |
 | JSON `String` | Küçük/basit payload ve okunabilirlik byte kontrolünden önemliyse. | String allocation ve sonradan UTF-8 encoding. Hot path için `byte[]` daha doğru. |
 | Büyük nested object graph | Consumer gerçekten tüm object model'e ihtiyaç duyuyorsa. | En yüksek heap, GC, p99 latency ve RSS riski. |
 
 Bu sample'da `byte[]` bilinçli tercihtir. REST consumer catalog yapısını anlamak zorunda değildir;
-provider cevabını HTTP üzerinden dışarı açması yeterlidir.
+provider cevabını HTTP üzerinden dışarı açması yeterlidir. Consumer native response handle aldıysa
+`RawResponse.nativeResponse(handle.nativeId())` dönmelidir. Payload'ı incelemek zorunda kaldığı için
+Java bytes aldıysa `RawResponse.json(bytes)` kullanmalıdır.
 
 ### Bu Provider Direkt Record Döndürebilir mi?
 
@@ -968,7 +1009,7 @@ Bilinçli olarak dışarıda bırakılanlar:
 Not: Bazı Dubbo metrics/API sınıfları classpath'te kalır çünkü Dubbo server bytecode'u bunlara
 referans verir. Runtime'da metrics, tracing ve QoS properties ile kapalıdır.
 
-## v3.2.2 Consumer ile Çalıştırma Sırası
+## v3.2.x Consumer ile Çalıştırma Sırası
 
 Lokal test için en temiz sıra:
 
@@ -976,7 +1017,7 @@ Lokal test için en temiz sıra:
 1. ZooKeeper'ı başlatın.
 2. DB-backed endpoint'ler açıksa PostgreSQL'i başlatın.
 3. Bu provider'ı başlatın.
-4. rust-java-rest 3.2.2 kullanan rest-sample-dubbo-consumer'ı başlatın.
+4. rust-java-rest 3.2.x kullanan rest-sample-dubbo-consumer'ı başlatın.
 5. Provider'ı doğrudan değil, consumer REST endpoint'lerini çağırarak test edin.
 ```
 

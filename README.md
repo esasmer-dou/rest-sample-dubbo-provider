@@ -32,7 +32,7 @@ registration, HikariCP pool size, and per-interface/per-method concurrency limit
 
 | Scenario | Provider design | Key setting | Consumer impact |
 |----------|-----------------|-------------|-----------------|
-| Read-heavy lookup/catalog | Small read interface<br>returns UTF-8 JSON `byte[]` | <small><code>dubbo.provider.service.NestedCatalogService.max-concurrent=16</code></small> | `RawResponse.json(bytes)`<br>no DTO graph |
+| Read-heavy lookup/catalog | Small read interface<br>returns UTF-8 JSON `byte[]` | <small><code>dubbo.provider.service.NestedCatalogService.max-concurrent=16</code></small> | Native handle: `RawResponse.nativeResponse(...)`<br>Java bytes: `RawResponse.json(bytes)`<br>no DTO graph |
 | Typed lookup/small page | `record`, `String`, primitive,<br>`List<record>`, `Map<String,String>` | <small><code>dubbo.provider.service.NestedCatalogService.method.&lt;method&gt;.max-concurrent=4-16</code><br>strict result limit</small> | Typed business decisions<br>Hessian/object allocation |
 | DB-backed query | `CustomerQueryService`<br>small DB pool | <small><code>sample.db.maximum-pool-size=2</code><br><code>dubbo.provider.service.CustomerQueryService.max-concurrent=1-2</code></small> | p99 bounded by DB capacity |
 | Write command | Compact JSON command bytes | <small><code>dubbo.provider.service.CustomerCommandService.method.&lt;method&gt;.max-concurrent=1</code><br><code>sample.db.auto-commit=true</code></small> | Retries off, fail-fast on saturation |
@@ -317,9 +317,10 @@ public final class NestedCatalogServiceImpl implements NestedCatalogService {
 dubbo.provider.service.NestedCatalogService.max-concurrent=32
 ```
 
-Effect: the provider does not rebuild the same JSON on every call, and the consumer can forward the
-bytes with `RawResponse.json(bytes)`. If the catalog changes, refresh this byte array through a clear
-timer, event, or admin operation.
+Effect: the provider does not rebuild the same JSON on every call. If the consumer receives a native
+response handle, it forwards it with `RawResponse.nativeResponse(handle.nativeId())`. If Java must
+inspect the payload and therefore already has bytes, it forwards them with `RawResponse.json(bytes)`.
+If the catalog changes, refresh this byte array through a clear timer, event, or admin operation.
 
 ### Recipe 6: Multiple Interfaces With Separate Capacity
 
@@ -422,15 +423,15 @@ The provider registers each interface under its own ZooKeeper path:
 /dubbo/com.reactor.rust.dubbo.sample.CustomerQueryService/providers
 ```
 
-## How `rust-java-rest` 3.2.2 Affects This Provider
+## How `rust-java-rest` 3.2.x Affects This Provider
 
 This provider does not depend on `rust-java-rest`, and it should stay that way. Its job is to expose
 a small Dubbo contract that lets the `rest-sample-dubbo-consumer` use the v3.2.x low-overhead response
 path.
 
-| Provider choice | Effect on the v3.2.2 consumer |
+| Provider choice | Effect on the v3.2.x consumer |
 |-----------------|----------------------------|
-| Return UTF-8 JSON as `byte[]` | Consumer can return `RawResponse.json(bytes)` and avoid a second DTO graph. |
+| Return UTF-8 JSON as `byte[]` | Consumer can use `RawResponse.nativeResponse(handle.nativeId())` on native handle routes, or `RawResponse.json(bytes)` when Java must inspect the bytes. Both avoid a second DTO graph. |
 | Keep interfaces small | Consumer can tune timeouts, backpressure, and metrics per RPC area. |
 | Keep method concurrency bounded | Provider overload becomes explicit instead of turning into heap, DB pool, or Netty queue growth. |
 | Align DB method limits with Hikari | Consumer p99 is more stable because DB saturation fails fast instead of queueing deeply. |
@@ -444,9 +445,11 @@ path.
 Turkish characters are safe in this flow when the provider writes UTF-8 JSON bytes and the consumer
 returns them with JSON content type. Do not build JSON through platform-default encodings.
 
-BEST: return `byte[]` for read-heavy pass-through JSON. ACCEPTABLE: return records when the consumer
-must make typed business decisions. ANTI-PATTERN: return a large nested object graph only for the
-consumer to convert it back to JSON.
+BEST: return `byte[]` for read-heavy pass-through JSON and let the consumer use
+`RawResponse.nativeResponse(handle.nativeId())` when it receives a native handle. ACCEPTABLE: return
+records when the consumer must make typed business decisions, or use `RawResponse.json(bytes)` when
+Java already has bytes because it inspected them. ANTI-PATTERN: return a large nested object graph
+only for the consumer to convert it back to JSON.
 
 ### Production Dependency Boundary
 
@@ -461,7 +464,7 @@ For memory and performance analysis, keep these scopes separate:
 | Consumer | Normal `rust-java-rest` dependency and `java-rust-dubbo` adapter | Framework `rust-java-rest-*-sample.jar` |
 | Framework sample jar | Bundled demo/benchmark routes | Provider or consumer pod sizing evidence |
 
-The `rust-java-rest` `3.2.2` normal jar and `core-runtime` jar exclude framework sample/benchmark
+The `rust-java-rest` `3.2.x` normal jar and `core-runtime` jar exclude framework sample/benchmark
 packages. That helps the consumer stay production-like, but it does not change this provider's class
 path because the provider never consumes the framework artifact.
 
@@ -479,6 +482,41 @@ provider limits instead of tuning them independently:
 BEST: start with small provider limits and increase only after measuring provider CPU, DB pool wait,
 consumer 503 rate, p99 latency, and RSS together. ANTI-PATTERN: increase consumer workers while the
 provider DB pool is already saturated.
+
+### Provider Hot Path Notes
+
+The provider keeps HikariCP and ActiveJDBC dependencies because this sample also shows how an
+existing database provider can be wired without Spring. That does not mean every hot query should go
+through an ActiveJDBC `Map` path.
+
+The current provider implementation uses the lighter path for benchmarked DB-backed routes:
+
+| Area | Current implementation | Why it matters |
+|------|------------------------|----------------|
+| `GET /api/v1/customers/db` provider method | Hikari `PreparedStatement` + direct `ResultSet` to `SampleCustomer` records | Avoids ActiveJDBC `Map` allocation on the hot read path. |
+| `customerExists` / `getCustomerDisplayName` | Narrow SQL selecting only `1` or `full_name` | Avoids reading a full customer row for scalar REST responses. |
+| `patchCustomerSegment` / `patchCustomerStatus` SQL | Fixed prepared update statements | Avoids dynamic SQL formatting on the command hot path. |
+| Command JSON response | `StringBuilder` JSON writer | Avoids `String.formatted(...)` parser/allocation overhead per command response. |
+| Read-heavy pass-through JSON | `byte[]` UTF-8 JSON | Lets the consumer use native response handles or `RawResponse.json(bytes)` without a DTO graph. |
+
+This is still a sample provider, not a universal ORM recommendation. ActiveJDBC remains useful for
+simple examples and legacy provider code, but if a provider method is in the c64/c256 hot path, use
+explicit SQL, narrow selected columns, bounded result sizes, and aligned provider/consumer
+admission. A slow provider cannot be fixed by increasing consumer workers.
+
+### Write Contention Rule
+
+Hot-row write pressure must be treated differently from distributed writes:
+
+| Write pattern | Provider behavior | Consumer behavior |
+|---------------|-------------------|-------------------|
+| Many updates to one customer id | PostgreSQL row lock becomes the bottleneck. | `sample.command.customer-key-admission.max-concurrent-per-key=1` should reject excess work early. |
+| Updates spread across many ids | DB pool and provider command bulkhead are the main limits. | Route admission can be wider if useful 2xx RPS rises without p99/RSS regression. |
+| Retried create/patch/delete | Can duplicate side effects unless idempotency exists. | Keep `reactor.dubbo.retries=0` for command routes. |
+
+BEST: make write commands idempotent with a `requestId`, keep provider method concurrency close to
+the DB pool, and let the consumer fail fast when one business key is overloaded. ANTI-PATTERN:
+raising global queues so hot-row lock waits become second-level p99 spikes.
 
 ## Architecture
 
@@ -561,9 +599,10 @@ Ownership boundary:
 | Contract compatibility | Shared API jar + contract tests |
 
 BEST: for hot reads and pass-through responses, return UTF-8 JSON `byte[]` from the provider and let
-the consumer forward it with `RawResponse.json(bytes)`. ACCEPTABLE: return `record` for small typed
-business responses. ANTI-PATTERN: produce a large nested `List<record>` and force the consumer JVM to
-serialize it again.
+the consumer forward the native handle with `RawResponse.nativeResponse(handle.nativeId())`.
+ACCEPTABLE: use `RawResponse.json(bytes)` when the consumer intentionally received Java bytes for
+inspection or transformation, or return `record` for small typed business responses. ANTI-PATTERN:
+produce a large nested `List<record>` and force the consumer JVM to serialize it again.
 
 Method shape catalog:
 
@@ -847,14 +886,16 @@ what the consumer will do with the value.
 
 | Provider return type | Best use case | Consumer cost |
 |----------------------|---------------|---------------|
-| `byte[]` containing UTF-8 JSON | Consumer forwards the response as HTTP JSON. | Lowest. Consumer uses `RawResponse.json(bytes)` and does not build another DTO graph. |
+| `byte[]` containing UTF-8 JSON | Consumer forwards the response as HTTP JSON. | Lowest. Native handle routes use `RawResponse.nativeResponse(handle.nativeId())`; Java-byte routes use `RawResponse.json(bytes)`. Neither builds another DTO graph. |
 | `record` DTO | Consumer needs typed data for filtering, validation, enrichment, or branching. | Hessian2 decode creates a Java object graph; HTTP response may serialize it again. |
 | Plain class DTO | Needed for legacy frameworks or serializers that cannot handle records. | Similar to record, usually more mutable and less explicit. |
 | `String` JSON | Small/simple payloads where readability is preferred over strict byte control. | String allocation and later UTF-8 encoding. Prefer `byte[]` for hot paths. |
 | Large nested object graph | Only when the consumer truly needs the full object model. | Highest heap, GC, p99 latency, and RSS risk. |
 
 For this sample, `byte[]` is intentional because the REST consumer does not need to understand the
-catalog structure. It only needs to expose the provider response over HTTP.
+catalog structure. It only needs to expose the provider response over HTTP. If the consumer gets a
+native response handle, it should return `RawResponse.nativeResponse(handle.nativeId())`. If it gets
+Java bytes because it must inspect the payload, it should return `RawResponse.json(bytes)`.
 
 ### Can This Provider Return a Record Directly?
 
@@ -963,7 +1004,7 @@ Intentionally excluded:
 Note: some Dubbo metrics/API classes remain on the classpath because Dubbo server bytecode references
 them. Runtime metrics, tracing, and QoS are disabled by properties.
 
-## Run Order With the v3.2.2 Consumer
+## Run Order With the v3.2.x Consumer
 
 Use this order for the cleanest local test:
 
@@ -971,7 +1012,7 @@ Use this order for the cleanest local test:
 1. Start ZooKeeper.
 2. Start PostgreSQL if DB-backed endpoints are enabled.
 3. Start this provider.
-4. Start rest-sample-dubbo-consumer on rust-java-rest 3.2.2.
+4. Start rest-sample-dubbo-consumer on rust-java-rest 3.2.x.
 5. Call the consumer REST endpoints, not the provider directly.
 ```
 

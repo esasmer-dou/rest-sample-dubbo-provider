@@ -12,7 +12,7 @@ FROM ibm-semeru-runtimes:open-21-jre
 
 WORKDIR /app
 
-COPY --from=build /workspace/target/rest-sample-dubbo-provider-0.1.0.jar /app/rest-sample-dubbo-provider.jar
+COPY --from=build /workspace/target/rest-sample-dubbo-provider-0.1.1.jar /app/rest-sample-dubbo-provider.jar
 
 ENV DUBBO_PROVIDER_APPLICATION_NAME=rest-sample-dubbo-provider \
     DUBBO_PROVIDER_HOST=rest-sample-dubbo-provider \

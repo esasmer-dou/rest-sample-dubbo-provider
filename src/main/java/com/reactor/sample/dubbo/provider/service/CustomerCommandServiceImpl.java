@@ -61,24 +61,18 @@ public final class CustomerCommandServiceImpl implements CustomerCommandService 
     public byte[] deleteCustomer(long customerId, byte[] commandJson) {
         JsonCommand command = JsonCommand.parse(commandJson);
         boolean deleted = customerRepository.deleteCustomer(customerId);
-        String json = """
-                {
-                  "source": "rest-sample-dubbo-provider",
-                  "service": "CustomerCommandService",
-                  "operation": "customer_deleted",
-                  "deleted": %s,
-                  "customerId": %d,
-                  "reason": "%s",
-                  "requestId": "%s",
-                  "generatedAt": "%s"
-                }
-                """.formatted(
-                deleted,
-                customerId,
-                escapeJson(command.valueOrDefault("reason", "")),
-                escapeJson(command.valueOrDefault("requestId", "")),
-                Instant.now());
-        return json.getBytes(StandardCharsets.UTF_8);
+        StringBuilder json = new StringBuilder(240);
+        json.append('{');
+        appendString(json, "source", "rest-sample-dubbo-provider").append(',');
+        appendString(json, "service", "CustomerCommandService").append(',');
+        appendString(json, "operation", "customer_deleted").append(',');
+        appendBoolean(json, "deleted", deleted).append(',');
+        appendNumber(json, "customerId", customerId).append(',');
+        appendString(json, "reason", command.valueOrDefault("reason", "")).append(',');
+        appendString(json, "requestId", command.valueOrDefault("requestId", "")).append(',');
+        appendString(json, "generatedAt", Instant.now().toString());
+        json.append('}');
+        return bytes(json);
     }
 
     @Override
@@ -123,63 +117,48 @@ public final class CustomerCommandServiceImpl implements CustomerCommandService 
     }
 
     private static byte[] success(String operation, SampleCustomer customer, JsonCommand command) {
-        String json = """
-                {
-                  "source": "rest-sample-dubbo-provider",
-                  "service": "CustomerCommandService",
-                  "operation": "%s",
-                  "requestId": "%s",
-                  "generatedAt": "%s",
-                  "customer": {
-                    "id": %d,
-                    "customerNo": "%s",
-                    "fullName": "%s",
-                    "segment": "%s",
-                    "email": "%s",
-                    "status": "%s",
-                    "createdAt": "%s",
-                    "updatedAt": "%s"
-                  }
-                }
-                """.formatted(
-                operation,
-                escapeJson(command.valueOrDefault("requestId", "")),
-                Instant.now(),
-                customer.id(),
-                escapeJson(customer.customerNo()),
-                escapeJson(customer.fullName()),
-                escapeJson(customer.segment()),
-                escapeJson(customer.email()),
-                escapeJson(customer.status()),
-                customer.createdAt(),
-                customer.updatedAt());
-        return json.getBytes(StandardCharsets.UTF_8);
+        StringBuilder json = new StringBuilder(384);
+        json.append('{');
+        appendString(json, "source", "rest-sample-dubbo-provider").append(',');
+        appendString(json, "service", "CustomerCommandService").append(',');
+        appendString(json, "operation", operation).append(',');
+        appendString(json, "requestId", command.valueOrDefault("requestId", "")).append(',');
+        appendString(json, "generatedAt", Instant.now().toString()).append(',');
+        json.append("\"customer\":{");
+        appendNumber(json, "id", customer.id()).append(',');
+        appendString(json, "customerNo", customer.customerNo()).append(',');
+        appendString(json, "fullName", customer.fullName()).append(',');
+        appendString(json, "segment", customer.segment()).append(',');
+        appendString(json, "email", customer.email()).append(',');
+        appendString(json, "status", customer.status()).append(',');
+        appendString(json, "createdAt", customer.createdAt().toString()).append(',');
+        appendString(json, "updatedAt", customer.updatedAt().toString());
+        json.append("}}");
+        return bytes(json);
     }
 
     private static byte[] notFound(long customerId, String code) {
-        String json = """
-                {
-                  "source": "rest-sample-dubbo-provider",
-                  "service": "CustomerCommandService",
-                  "code": "%s",
-                  "customerId": %d,
-                  "generatedAt": "%s"
-                }
-                """.formatted(code, customerId, Instant.now());
-        return json.getBytes(StandardCharsets.UTF_8);
+        StringBuilder json = new StringBuilder(160);
+        json.append('{');
+        appendString(json, "source", "rest-sample-dubbo-provider").append(',');
+        appendString(json, "service", "CustomerCommandService").append(',');
+        appendString(json, "code", code).append(',');
+        appendNumber(json, "customerId", customerId).append(',');
+        appendString(json, "generatedAt", Instant.now().toString());
+        json.append('}');
+        return bytes(json);
     }
 
     private static byte[] error(String code, String message) {
-        String json = """
-                {
-                  "source": "rest-sample-dubbo-provider",
-                  "service": "CustomerCommandService",
-                  "code": "%s",
-                  "message": "%s",
-                  "generatedAt": "%s"
-                }
-                """.formatted(escapeJson(code), escapeJson(message), Instant.now());
-        return json.getBytes(StandardCharsets.UTF_8);
+        StringBuilder json = new StringBuilder(176);
+        json.append('{');
+        appendString(json, "source", "rest-sample-dubbo-provider").append(',');
+        appendString(json, "service", "CustomerCommandService").append(',');
+        appendString(json, "code", code).append(',');
+        appendString(json, "message", message).append(',');
+        appendString(json, "generatedAt", Instant.now().toString());
+        json.append('}');
+        return bytes(json);
     }
 
     private static CustomerMutationResult mutation(
@@ -235,6 +214,25 @@ public final class CustomerCommandServiceImpl implements CustomerCommandService 
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
                 .replace("\t", "\\t");
+    }
+
+    private static StringBuilder appendString(StringBuilder json, String name, String value) {
+        json.append('"').append(name).append("\":\"").append(escapeJson(value)).append('"');
+        return json;
+    }
+
+    private static StringBuilder appendNumber(StringBuilder json, String name, long value) {
+        json.append('"').append(name).append("\":").append(value);
+        return json;
+    }
+
+    private static StringBuilder appendBoolean(StringBuilder json, String name, boolean value) {
+        json.append('"').append(name).append("\":").append(value);
+        return json;
+    }
+
+    private static byte[] bytes(StringBuilder json) {
+        return json.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     private record JsonCommand(String json) {

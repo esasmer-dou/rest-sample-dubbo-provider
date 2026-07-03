@@ -6,7 +6,7 @@
 
     <groupId>com.reactor.sample</groupId>
     <artifactId>rest-sample-dubbo-provider</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
     <packaging>jar</packaging>
 
     <name>rest-sample-dubbo-provider</name>
@@ -189,18 +189,13 @@
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-compiler-plugin</artifactId>
                         <configuration>
-                            <excludes>
-                                <exclude>com/reactor/sample/dubbo/provider/app/RestSampleDubboProviderApplication.java</exclude>
-                                <exclude>com/reactor/sample/dubbo/provider/db/**</exclude>
-                                <exclude>com/reactor/sample/dubbo/provider/registry/**</exclude>
-                                <exclude>com/reactor/sample/dubbo/provider/service/Customer*.java</exclude>
-                                <exclude>com/reactor/sample/dubbo/provider/service/NestedCatalogServiceImpl.java</exclude>
-                                <exclude>com/reactor/rust/dubbo/sample/Customer*.java</exclude>
-                                <exclude>com/reactor/rust/dubbo/sample/NestedCatalogService.java</exclude>
-                                <exclude>com/reactor/rust/dubbo/sample/dto/Catalog*.java</exclude>
-                                <exclude>com/reactor/rust/dubbo/sample/dto/CreateCustomerCommand.java</exclude>
-                                <exclude>com/reactor/rust/dubbo/sample/dto/Customer*.java</exclude>
-                            </excludes>
+                            <includes>
+                                <include>com/reactor/sample/dubbo/provider/app/CatalogStaticProviderApplication.java</include>
+                                <include>com/reactor/sample/dubbo/provider/config/**</include>
+                                <include>com/reactor/sample/dubbo/provider/dubbo/**</include>
+                                <include>com/reactor/sample/dubbo/provider/service/CatalogJsonServiceImpl.java</include>
+                                <include>com/reactor/rust/dubbo/sample/CatalogJsonService.java</include>
+                            </includes>
                         </configuration>
                     </plugin>
                 </plugins>

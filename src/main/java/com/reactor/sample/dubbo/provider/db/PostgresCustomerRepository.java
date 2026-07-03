@@ -3,17 +3,14 @@ package com.reactor.sample.dubbo.provider.db;
 import com.reactor.sample.dubbo.provider.config.ProviderProperties;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import org.javalite.activejdbc.Base;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 public final class PostgresCustomerRepository implements AutoCloseable {
 
@@ -25,6 +22,16 @@ public final class PostgresCustomerRepository implements AutoCloseable {
             """;
     private static final String SELECT_CUSTOMER_BY_ID = """
             select id, customer_no, full_name, segment, email, status, created_at, updated_at
+            from sample_customers
+            where id = ?
+            """;
+    private static final String SELECT_CUSTOMER_EXISTS = """
+            select 1
+            from sample_customers
+            where id = ?
+            """;
+    private static final String SELECT_CUSTOMER_DISPLAY_NAME = """
+            select full_name
             from sample_customers
             where id = ?
             """;
@@ -41,6 +48,18 @@ public final class PostgresCustomerRepository implements AutoCloseable {
               sum(case when status = 'active' then 1 else 0 end) as active,
               sum(case when status = 'passive' then 1 else 0 end) as passive
             from sample_customers
+            """;
+    private static final String UPDATE_CUSTOMER_SEGMENT = """
+            update sample_customers
+            set segment = ?, updated_at = now()
+            where id = ?
+            returning id, customer_no, full_name, segment, email, status, created_at, updated_at
+            """;
+    private static final String UPDATE_CUSTOMER_STATUS = """
+            update sample_customers
+            set status = ?, updated_at = now()
+            where id = ?
+            returning id, customer_no, full_name, segment, email, status, created_at, updated_at
             """;
 
     private final HikariDataSource dataSource;
@@ -80,16 +99,16 @@ public final class PostgresCustomerRepository implements AutoCloseable {
 
     public List<SampleCustomer> findCustomers() {
         ensureInitialized();
-        Base.open(dataSource);
-        try {
-            List<Map> rows = Base.findAll(SELECT_CUSTOMERS);
-            List<SampleCustomer> customers = new ArrayList<>(rows.size());
-            for (Map row : rows) {
-                customers.add(toCustomer(row));
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(SELECT_CUSTOMERS);
+             ResultSet resultSet = statement.executeQuery()) {
+            List<SampleCustomer> customers = new ArrayList<>(100);
+            while (resultSet.next()) {
+                customers.add(toCustomer(resultSet));
             }
             return customers;
-        } finally {
-            Base.close();
+        } catch (Exception e) {
+            throw new IllegalStateException("Find customers failed", e);
         }
     }
 
@@ -143,6 +162,32 @@ public final class PostgresCustomerRepository implements AutoCloseable {
         }
     }
 
+    public boolean customerExists(long customerId) {
+        ensureInitialized();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(SELECT_CUSTOMER_EXISTS)) {
+            statement.setLong(1, customerId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next();
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("Check customer existence failed", e);
+        }
+    }
+
+    public String customerDisplayName(long customerId) {
+        ensureInitialized();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(SELECT_CUSTOMER_DISPLAY_NAME)) {
+            statement.setLong(1, customerId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next() ? resultSet.getString("full_name") : "";
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("Find customer display name failed", e);
+        }
+    }
+
     public SampleCustomer createCustomer(String customerNo, String fullName, String segment, String email) {
         ensureInitialized();
         try (Connection connection = dataSource.getConnection();
@@ -173,11 +218,11 @@ public final class PostgresCustomerRepository implements AutoCloseable {
     }
 
     public SampleCustomer updateSegment(long customerId, String segment) {
-        return updateSingleField(customerId, "segment", segment);
+        return updateSingleField(customerId, UPDATE_CUSTOMER_SEGMENT, segment);
     }
 
     public SampleCustomer updateStatus(long customerId, String status) {
-        return updateSingleField(customerId, "status", status);
+        return updateSingleField(customerId, UPDATE_CUSTOMER_STATUS, status);
     }
 
     public boolean deleteCustomer(long customerId) {
@@ -238,27 +283,8 @@ public final class PostgresCustomerRepository implements AutoCloseable {
         }
     }
 
-    private static SampleCustomer toCustomer(Map row) {
-        return new SampleCustomer(
-                number(row.get("id")).longValue(),
-                string(row.get("customer_no")),
-                string(row.get("full_name")),
-                string(row.get("segment")),
-                string(row.get("email")),
-                string(row.get("status")),
-                instant(row.get("created_at")),
-                instant(row.get("updated_at"))
-        );
-    }
-
-    private SampleCustomer updateSingleField(long customerId, String fieldName, String value) {
+    private SampleCustomer updateSingleField(long customerId, String sql, String value) {
         ensureInitialized();
-        String sql = """
-                update sample_customers
-                set %s = ?, updated_at = now()
-                where id = ?
-                returning id, customer_no, full_name, segment, email, status, created_at, updated_at
-                """.formatted(fieldName);
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, value);
@@ -285,27 +311,6 @@ public final class PostgresCustomerRepository implements AutoCloseable {
                 row.getTimestamp("created_at").toInstant(),
                 row.getTimestamp("updated_at").toInstant()
         );
-    }
-
-    private static Number number(Object value) {
-        if (value instanceof Number number) {
-            return number;
-        }
-        return Long.parseLong(String.valueOf(value));
-    }
-
-    private static String string(Object value) {
-        return value == null ? "" : String.valueOf(value);
-    }
-
-    private static Instant instant(Object value) {
-        if (value instanceof Timestamp timestamp) {
-            return timestamp.toInstant();
-        }
-        if (value instanceof Instant instant) {
-            return instant;
-        }
-        return Instant.parse(String.valueOf(value));
     }
 
     public record CustomerCounts(int total, int active, int passive) {

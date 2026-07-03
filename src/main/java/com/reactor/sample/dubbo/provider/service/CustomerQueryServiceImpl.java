@@ -81,13 +81,12 @@ public final class CustomerQueryServiceImpl implements CustomerQueryService, Aut
 
     @Override
     public boolean customerExists(long customerId) {
-        return customerRepository.findCustomer(customerId) != null;
+        return customerRepository.customerExists(customerId);
     }
 
     @Override
     public String getCustomerDisplayName(long customerId) {
-        SampleCustomer customer = customerRepository.findCustomer(customerId);
-        return customer == null ? "" : customer.fullName();
+        return customerRepository.customerDisplayName(customerId);
     }
 
     @Override
