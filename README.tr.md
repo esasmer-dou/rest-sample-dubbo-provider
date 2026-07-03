@@ -25,6 +25,19 @@ Bu örnek şu konuları göstermek için hazırlandı:
 Bu repo genel amaçlı enterprise Dubbo provider template'i değildir. Rust-Java REST Dubbo consumer
 yolunu doğrulamak için odaklı bir provider örneğidir.
 
+## Maven Package Erişimi
+
+Bu provider sample `rust-java-rest` veya `java-rust-dubbo` bağımlılığı kullanmaz. Plain Java Dubbo
+provider olarak çalışır ve Apache Dubbo, HikariCP, PostgreSQL JDBC ve ActiveJDBC gibi public Maven
+bağımlılıklarını kullanır. Bu nedenle normal provider build'i için GitHub Packages token gerekmez.
+
+GitHub Packages `settings.xml` / `read:packages` ihtiyacı, private `com.reactor` artifact kullanan
+projeler içindir. Örneğin `rest-sample-dubbo-consumer`, `rust-java-rest` ve `java-rust-dubbo`
+paketlerini GitHub Packages üzerinden indiriyorsa bu ayara ihtiyaç duyar.
+
+İleride bu provider projesine private bir `com.reactor` dependency eklerseniz, consumer sample'daki
+Maven repository ve `~/.m2/settings.xml` ayarlarını burada da kullanmanız gerekir.
+
 ## Buradan Başlayın: Provider Şeklinizi Seçin
 
 Bu provider bir REST uygulaması olmadığı için `rust-java-rest` runtime profile'ı kullanmaz.

@@ -24,6 +24,19 @@ Use this sample when you want to understand:
 This is not a generic enterprise Dubbo provider template. It is a focused provider used to validate
 the Rust-Java REST Dubbo consumer path.
 
+## Maven Package Access
+
+This provider sample does **not** depend on `rust-java-rest` or `java-rust-dubbo`. It is a plain Java
+Dubbo provider and uses public Maven dependencies such as Apache Dubbo, HikariCP, PostgreSQL JDBC,
+and ActiveJDBC. Because of that, a normal provider build does not need a GitHub Packages token.
+
+The GitHub Packages `settings.xml` / `read:packages` requirement belongs to projects that consume
+private `com.reactor` artifacts, for example `rest-sample-dubbo-consumer` when it downloads
+`rust-java-rest` and `java-rust-dubbo` from GitHub Packages.
+
+If you later add a private `com.reactor` dependency to this provider, then add the same Maven
+repository and `~/.m2/settings.xml` credentials used by the consumer sample.
+
 ## Start Here: Pick Your Provider Shape
 
 This provider has no `rust-java-rest` runtime profile because it is not a REST application. Its
