@@ -24,6 +24,69 @@ Use this sample when you want to understand:
 This is not a generic enterprise Dubbo provider template. It is a focused provider used to validate
 the Rust-Java REST Dubbo consumer path.
 
+## Copy-Paste: Run The Provider
+
+Use this section for a quick local start. Start the provider first. Then start
+`rest-sample-dubbo-consumer`.
+
+### Scenario 1: Small Catalog Provider
+
+This scenario has no PostgreSQL and no ZooKeeper. The provider only returns ready catalog JSON. It is
+the smallest local provider for a static consumer.
+
+Run these commands from the `rest-sample-dubbo-provider` directory:
+
+```powershell
+mvn -q -Pcatalog-static-provider clean package
+
+java "-Ddubbo.provider.host=127.0.0.1" `
+  "-Ddubbo.provider.bind-host=127.0.0.1" `
+  "-Ddubbo.provider.port=20880" `
+  "-Dreactor.dubbo.registry-enabled=false" `
+  -jar target/rest-sample-dubbo-provider-0.1.1.jar
+```
+
+The consumer can then use:
+
+```properties
+reactor.dubbo.providers=127.0.0.1:20880
+sample.dubbo.discovery=static
+```
+
+### Scenario 2: PostgreSQL-Backed Full Provider
+
+Use this when you want to test catalog, customer query, and customer command interfaces. This is the
+right local provider for POST, PATCH, and DELETE examples.
+
+Run these commands from the `rest-sample-dubbo-provider` directory:
+
+```powershell
+docker rm -f rs-provider-postgres-test 2>$null
+
+docker run -d --name rs-provider-postgres-test `
+  -e POSTGRES_DB=reactor_sample `
+  -e POSTGRES_USER=reactor `
+  -e POSTGRES_PASSWORD=reactor `
+  -p 15432:5432 postgres:15.7-alpine
+
+mvn -q clean package
+
+java "-Ddubbo.provider.host=127.0.0.1" `
+  "-Ddubbo.provider.bind-host=127.0.0.1" `
+  "-Ddubbo.provider.port=20880" `
+  "-Dreactor.dubbo.registry-enabled=false" `
+  "-Dsample.db.jdbc-url=jdbc:postgresql://127.0.0.1:15432/reactor_sample" `
+  "-Dsample.db.username=reactor" `
+  "-Dsample.db.password=reactor" `
+  "-Dsample.db.schema-init=true" `
+  "-Dsample.db.warmup=true" `
+  "-Dsample.db.maximum-pool-size=2" `
+  "-Dsample.db.minimum-idle=0" `
+  -jar target/rest-sample-dubbo-provider-0.1.1.jar
+```
+
+Keep this terminal open. Consumer requests go to this process.
+
 ## Maven Package Access
 
 This provider sample does **not** depend on `rust-java-rest` or `java-rust-dubbo`. It is a plain Java

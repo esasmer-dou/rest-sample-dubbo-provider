@@ -25,6 +25,69 @@ Bu örnek şu konuları göstermek için hazırlandı:
 Bu repo genel amaçlı enterprise Dubbo provider template'i değildir. Rust-Java REST Dubbo consumer
 yolunu doğrulamak için odaklı bir provider örneğidir.
 
+## Kopyala-Yapıştır: Provider'ı Çalıştır
+
+Bu bölüm hızlı başlamak içindir. Önce provider'ı açın. Sonra `rest-sample-dubbo-consumer`
+uygulamasını çalıştırın.
+
+### Senaryo 1: En Küçük Catalog Provider
+
+Bu senaryoda PostgreSQL yoktur. ZooKeeper yoktur. Provider sadece hazır catalog JSON döner. Static
+consumer için en küçük başlangıç budur.
+
+Bu komutları `rest-sample-dubbo-provider` dizininde çalıştırın:
+
+```powershell
+mvn -q -Pcatalog-static-provider clean package
+
+java "-Ddubbo.provider.host=127.0.0.1" `
+  "-Ddubbo.provider.bind-host=127.0.0.1" `
+  "-Ddubbo.provider.port=20880" `
+  "-Dreactor.dubbo.registry-enabled=false" `
+  -jar target/rest-sample-dubbo-provider-0.1.1.jar
+```
+
+Bu provider açıkken consumer şu adresi kullanır:
+
+```properties
+reactor.dubbo.providers=127.0.0.1:20880
+sample.dubbo.discovery=static
+```
+
+### Senaryo 2: PostgreSQL Destekli Full Provider
+
+Bu senaryoda provider catalog, customer query ve customer command interface'lerini açar. PostgreSQL
+ve HikariCP devrededir. POST, PATCH ve DELETE örnekleri için bu senaryoyu kullanın.
+
+Bu komutları `rest-sample-dubbo-provider` dizininde çalıştırın:
+
+```powershell
+docker rm -f rs-provider-postgres-test 2>$null
+
+docker run -d --name rs-provider-postgres-test `
+  -e POSTGRES_DB=reactor_sample `
+  -e POSTGRES_USER=reactor `
+  -e POSTGRES_PASSWORD=reactor `
+  -p 15432:5432 postgres:15.7-alpine
+
+mvn -q clean package
+
+java "-Ddubbo.provider.host=127.0.0.1" `
+  "-Ddubbo.provider.bind-host=127.0.0.1" `
+  "-Ddubbo.provider.port=20880" `
+  "-Dreactor.dubbo.registry-enabled=false" `
+  "-Dsample.db.jdbc-url=jdbc:postgresql://127.0.0.1:15432/reactor_sample" `
+  "-Dsample.db.username=reactor" `
+  "-Dsample.db.password=reactor" `
+  "-Dsample.db.schema-init=true" `
+  "-Dsample.db.warmup=true" `
+  "-Dsample.db.maximum-pool-size=2" `
+  "-Dsample.db.minimum-idle=0" `
+  -jar target/rest-sample-dubbo-provider-0.1.1.jar
+```
+
+Provider terminalini açık bırakın. Consumer çağrıları bu process'e gider.
+
 ## Maven Package Erişimi
 
 Bu provider sample `rust-java-rest` veya `java-rust-dubbo` bağımlılığı kullanmaz. Plain Java Dubbo
