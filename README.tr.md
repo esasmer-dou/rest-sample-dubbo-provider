@@ -879,6 +879,33 @@ ve downstream consistency önemliyse soft-delete/status change daha doğru olur.
 | "Provider RSS yüksek" | `sample.db.minimum-idle=0`, Netty arena `1`, QoS/metrics/tracing kapalı kalsın. | Bu sample'da kullanılmayan Dubbo governance özelliklerini açmayın. |
 | "Daha güçlü write semantics lazım" | Provider'da idempotency/audit table ekleyin ve command JSON içindeki `requestId` değerini kullanın. | DB mutation provider'daysa idempotency'yi REST consumer'da çözmeyin. |
 
+### Deklaratif Provider Yüzeyi
+
+Provider startup kodu bilinçli olarak küçük tutulur. Her application class sadece açacağı servis
+yüzeyini söyler:
+
+```java
+List<ProviderSupport.ServicePlan<?>> services = List.of(
+    ProviderSupport.service(NestedCatalogService.class, catalogService),
+    ProviderSupport.service(CustomerQueryService.class, customerService),
+    ProviderSupport.service(CustomerCommandService.class, customerCommandService));
+```
+
+`ProviderSupport` tekrar eden işleri yapar: servis export eder, interface/method concurrency
+limitlerini property'den okur, startup loglarını basar ve kapanışta kaynakları doğru sırayla kapatır.
+Daha küçük provider istiyorsanız bu listeden servis çıkarın veya hazır Maven profile'larından birini
+kullanın:
+
+| Provider şekli | Servis planı | Ne zaman kullanılır? |
+|----------------|--------------|----------------------|
+| `catalog-static-provider` | Sadece `CatalogJsonService` | En küçük hazır JSON read provider gerekiyorsa. |
+| `db-query-provider` | Sadece `CustomerQueryService` | Provider PostgreSQL okuyacak ama command açmayacaksa. |
+| default/full | Catalog + customer query + customer command | POST/PATCH/DELETE dahil bütün sample gerekiyorsa. |
+
+Bu bir reflection scanner değildir. Hangi interface'lerin export edildiği kodda açık kalır. Tekrar
+eden Dubbo lifecycle kodu ise tek helper içinde durur. Böylece startup öngörülebilir kalır ve gizli
+classpath büyümesi oluşmaz.
+
 ## Paket Yapısı
 
 ```text

@@ -876,6 +876,31 @@ system, prefer a soft-delete/status change if audit, recovery, or downstream con
 | "Provider RSS is high" | Keep `sample.db.minimum-idle=0`, Netty arenas `1`, and QoS/metrics/tracing disabled. | Do not enable unused Dubbo governance features in this sample. |
 | "Need stronger write semantics" | Add idempotency/audit table in provider and keep `requestId` in command JSON. | Do not implement idempotency in the REST consumer if DB mutation is provider-owned. |
 
+### Declarative Provider Surface
+
+Provider startup is intentionally small. Each application class declares only the service surface:
+
+```java
+List<ProviderSupport.ServicePlan<?>> services = List.of(
+    ProviderSupport.service(NestedCatalogService.class, catalogService),
+    ProviderSupport.service(CustomerQueryService.class, customerService),
+    ProviderSupport.service(CustomerCommandService.class, customerCommandService));
+```
+
+`ProviderSupport` does the repeated work: export services, read interface/method concurrency limits,
+log startup, and close resources in the right order. To create a smaller provider, remove a service
+from this list or use the prepared Maven profiles:
+
+| Provider shape | Service plan | Use it when |
+|----------------|--------------|-------------|
+| `catalog-static-provider` | `CatalogJsonService` only | You need the smallest ready-JSON read provider. |
+| `db-query-provider` | `CustomerQueryService` only | The provider reads PostgreSQL but must not expose commands. |
+| default/full | Catalog + customer query + customer command | You want the complete sample including POST/PATCH/DELETE. |
+
+This is not a reflection scanner. The exported interfaces stay explicit in code, while the repeated
+Dubbo lifecycle code stays in one helper. That keeps startup predictable and avoids hidden classpath
+growth.
+
 ## Package Structure
 
 ```text
