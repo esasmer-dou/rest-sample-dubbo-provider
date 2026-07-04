@@ -885,16 +885,18 @@ Provider startup kodu bilinçli olarak küçük tutulur. Her application class s
 yüzeyini söyler:
 
 ```java
-List<ProviderSupport.ServicePlan<?>> services = List.of(
-    ProviderSupport.service(NestedCatalogService.class, catalogService),
-    ProviderSupport.service(CustomerQueryService.class, customerService),
-    ProviderSupport.service(CustomerCommandService.class, customerCommandService));
+DubboProviderSupport support = DubboProviderSupport.fromProperties(ProviderProperties.asProperties());
+
+List<DubboProviderSupport.ServicePlan<?>> services = List.of(
+    support.service(NestedCatalogService.class, catalogService),
+    support.service(CustomerQueryService.class, customerService),
+    support.service(CustomerCommandService.class, customerCommandService));
 ```
 
-`ProviderSupport` tekrar eden işleri yapar: servis export eder, interface/method concurrency
-limitlerini property'den okur, startup loglarını basar ve kapanışta kaynakları doğru sırayla kapatır.
-Daha küçük provider istiyorsanız bu listeden servis çıkarın veya hazır Maven profile'larından birini
-kullanın:
+`DubboProviderSupport`, `java-rust-dubbo` içinden gelir. Tekrar eden işleri yapar: servis export
+eder, interface/method concurrency limitlerini property'den okur, startup loglarını basar ve kapanışta
+kaynakları doğru sırayla kapatır. Daha küçük provider istiyorsanız bu listeden servis çıkarın veya
+hazır Maven profile'larından birini kullanın:
 
 | Provider şekli | Servis planı | Ne zaman kullanılır? |
 |----------------|--------------|----------------------|
@@ -921,14 +923,11 @@ com.reactor.sample.dubbo.provider.db
 com.reactor.sample.dubbo.provider.service
   Dubbo service implementasyonu.
 
-com.reactor.sample.dubbo.provider.dubbo
-  Minimal Dubbo export ve runtime model.
-
-com.reactor.sample.dubbo.provider.registry
-  ZooKeeper provider registration.
-
 com.reactor.rust.dubbo.sample
   Ortak Dubbo interface örnekleri. Production'da shared API jar'a taşınmalı.
+
+com.reactor.rust.dubbo.provider
+  Library içindeki provider desteği: explicit export, ZooKeeper registration, lifecycle ve concurrency gate'leri.
 ```
 
 Main class:
@@ -954,8 +953,9 @@ Bu provider'daki class'lar HTTP JSON DTO değildir:
 | `RestSampleDubboProviderApplication` | Process bootstrap ve shutdown hook. | Hayır |
 | `ProviderProperties` | Runtime property okur ve validate eder. | Hayır |
 | `ProviderRuntimeTuning` | Dubbo/Netty startup tuning uygular. | Hayır |
-| `PlainDubboProvider` | Dubbo protocol export ve exporter lifecycle yönetir. | Hayır |
-| `ZookeeperProviderRegistration` | ZooKeeper session ve ephemeral node lifecycle yönetir. | Hayır |
+| `DubboProviderSupport` | Provider property'lerini okur ve explicit servis listesini export eder. | Hayır |
+| `PlainDubboProvider` | Dubbo protocol export ve exporter lifecycle yöneten library sınıfıdır. | Hayır |
+| `ZookeeperDubboProviderRegistration` | ZooKeeper session ve ephemeral node lifecycle yöneten library sınıfıdır. | Hayır |
 | `PostgresCustomerRepository` | DB access davranışı ve pool kullanımını yönetir. | Hayır |
 | `NestedCatalogServiceImpl` | Dubbo business service implementasyonu. | Hayır |
 | `CustomerQueryServiceImpl` | DB-backed Dubbo business service implementasyonu. | Hayır |

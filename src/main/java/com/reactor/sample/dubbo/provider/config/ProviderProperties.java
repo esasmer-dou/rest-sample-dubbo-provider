@@ -25,6 +25,12 @@ public final class ProviderProperties {
         return value == null || value.isBlank() ? defaultValue : value.trim();
     }
 
+    public static Properties asProperties() {
+        Properties copy = new Properties();
+        copy.putAll(CLASSPATH_PROPERTIES);
+        return copy;
+    }
+
     public static int getIntOrDefault(String key, int defaultValue) {
         String value = find(key);
         if (value == null || value.isBlank()) {

@@ -881,15 +881,17 @@ system, prefer a soft-delete/status change if audit, recovery, or downstream con
 Provider startup is intentionally small. Each application class declares only the service surface:
 
 ```java
-List<ProviderSupport.ServicePlan<?>> services = List.of(
-    ProviderSupport.service(NestedCatalogService.class, catalogService),
-    ProviderSupport.service(CustomerQueryService.class, customerService),
-    ProviderSupport.service(CustomerCommandService.class, customerCommandService));
+DubboProviderSupport support = DubboProviderSupport.fromProperties(ProviderProperties.asProperties());
+
+List<DubboProviderSupport.ServicePlan<?>> services = List.of(
+    support.service(NestedCatalogService.class, catalogService),
+    support.service(CustomerQueryService.class, customerService),
+    support.service(CustomerCommandService.class, customerCommandService));
 ```
 
-`ProviderSupport` does the repeated work: export services, read interface/method concurrency limits,
-log startup, and close resources in the right order. To create a smaller provider, remove a service
-from this list or use the prepared Maven profiles:
+`DubboProviderSupport` comes from `java-rust-dubbo`. It does the repeated work: export services, read
+interface/method concurrency limits, log startup, and close resources in the right order. To create a
+smaller provider, remove a service from this list or use the prepared Maven profiles:
 
 | Provider shape | Service plan | Use it when |
 |----------------|--------------|-------------|
@@ -916,14 +918,11 @@ com.reactor.sample.dubbo.provider.db
 com.reactor.sample.dubbo.provider.service
   Dubbo service implementation.
 
-com.reactor.sample.dubbo.provider.dubbo
-  Minimal Dubbo export and runtime model.
-
-com.reactor.sample.dubbo.provider.registry
-  ZooKeeper provider registration.
-
 com.reactor.rust.dubbo.sample
   Shared Dubbo interface examples. In production, move these to a shared API jar.
+
+com.reactor.rust.dubbo.provider
+  Library-owned provider support: explicit export, ZooKeeper registration, lifecycle, and concurrency gates.
 ```
 
 Main class:
@@ -949,8 +948,9 @@ The classes in this provider are not HTTP JSON DTOs:
 | `RestSampleDubboProviderApplication` | Process bootstrap and shutdown hook. | No |
 | `ProviderProperties` | Reads and validates runtime properties. | No |
 | `ProviderRuntimeTuning` | Applies Dubbo/Netty startup tuning. | No |
-| `PlainDubboProvider` | Exports Dubbo protocol and owns exporter lifecycle. | No |
-| `ZookeeperProviderRegistration` | Owns ZooKeeper session and ephemeral node lifecycle. | No |
+| `DubboProviderSupport` | Reads provider properties and exports the explicit service list. | No |
+| `PlainDubboProvider` | Library class that exports Dubbo protocol and owns exporter lifecycle. | No |
+| `ZookeeperDubboProviderRegistration` | Library class that owns ZooKeeper session and ephemeral node lifecycle. | No |
 | `PostgresCustomerRepository` | Owns DB access behavior and pool usage. | No |
 | `NestedCatalogServiceImpl` | Dubbo business service implementation. | No |
 | `CustomerQueryServiceImpl` | DB-backed Dubbo business service implementation. | No |
