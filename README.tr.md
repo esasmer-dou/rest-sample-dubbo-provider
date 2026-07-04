@@ -30,6 +30,27 @@ Image veya Maven profile seçmeden önce provider şekli tablolarına bak.
 
 DB pool, ZooKeeper veya method concurrency ayarlıyorsan konfigürasyon tablosuna bak.
 
+## Property Katmanları
+
+Varsayılan `src/main/resources/rest-sample-dubbo-provider.properties` minimum local dosyadır.
+Provider adresini, registry modunu, default execution limit değerini ve DB bağlantı bilgilerini içerir.
+
+Production ayarlarını overlay olarak kullanın:
+
+```powershell
+java "-Dreactor.config.file=src/main/resources/config/production.properties" ...
+```
+
+Advanced tuning dosyasını provider p99, DB pool wait ve RSS ölçmeden kullanmayın:
+
+```powershell
+java "-Dreactor.config.file=src/main/resources/config/production.properties;src/main/resources/config/advanced-tuning.properties" ...
+```
+
+- `config/production.properties`: Kubernetes host/bind, registry seçimi ve Hikari pool default'ları içindir.
+- `config/advanced-tuning.properties`: interface/method bulkhead ve Netty/Dubbo low-RSS ayarları içindir.
+- Environment alternatifi: `REACTOR_CONFIG_FILE=/app/config/production.properties`.
+
 ## Bu Örnek Ne İçin Hazırlandı?
 
 Bu örnek şu konuları göstermek için hazırlandı:
@@ -102,8 +123,6 @@ java "-Ddubbo.provider.host=127.0.0.1" `
   "-Dsample.db.password=reactor" `
   "-Dsample.db.schema-init=true" `
   "-Dsample.db.warmup=true" `
-  "-Dsample.db.maximum-pool-size=2" `
-  "-Dsample.db.minimum-idle=0" `
   -jar target/rest-sample-dubbo-provider-0.1.1.jar
 ```
 

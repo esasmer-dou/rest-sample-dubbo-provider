@@ -4,13 +4,18 @@ import com.alibaba.com.caucho.hessian.io.Hessian2Input;
 import com.alibaba.com.caucho.hessian.io.Hessian2Output;
 import com.reactor.rust.dubbo.sample.dto.CatalogInfo;
 import com.reactor.rust.dubbo.sample.dto.CatalogItem;
+import com.reactor.sample.dubbo.provider.config.ProviderProperties;
 import com.reactor.sample.dubbo.provider.service.NestedCatalogServiceImpl;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -22,9 +27,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProviderRuntimeConfigurationTest {
 
+    @TempDir
+    Path tempDir;
+
+    @AfterEach
+    void clearOverlayProperty() {
+        System.clearProperty("reactor.config.file");
+    }
+
     @Test
     void providerKeepsDbBulkheadAlignedWithHikariPool() throws IOException {
-        Properties properties = loadProperties();
+        Properties properties = loadProperties(
+                "rest-sample-dubbo-provider.properties",
+                "config/production.properties",
+                "config/advanced-tuning.properties");
 
         int hikariMaxPool = intValue(properties, "sample.db.maximum-pool-size");
         int customerServiceLimit = intValue(properties, "dubbo.provider.service.CustomerQueryService.max-concurrent");
@@ -52,7 +68,7 @@ class ProviderRuntimeConfigurationTest {
 
     @Test
     void providerKeepsNettyAndDubboLowRssTuning() throws IOException {
-        Properties properties = loadProperties();
+        Properties properties = loadProperties("config/advanced-tuning.properties");
 
         assertEquals("1", properties.getProperty("io.netty.allocator.numDirectArenas"));
         assertEquals("1", properties.getProperty("io.netty.allocator.numHeapArenas"));
@@ -61,6 +77,18 @@ class ProviderRuntimeConfigurationTest {
         assertEquals("false", properties.getProperty("dubbo.application.qos.enable"));
         assertEquals("false", properties.getProperty("dubbo.metrics.enable"));
         assertEquals("false", properties.getProperty("dubbo.tracing.enabled"));
+    }
+
+    @Test
+    void providerPropertiesLoadsConfiguredOverlay() throws IOException {
+        Path overlay = tempDir.resolve("production.properties");
+        Files.writeString(overlay, String.join(System.lineSeparator(),
+                "dubbo.provider.host=0.0.0.0",
+                "sample.db.maximum-pool-size=3"));
+        System.setProperty("reactor.config.file", overlay.toString());
+
+        assertEquals("0.0.0.0", ProviderProperties.get("dubbo.provider.host"));
+        assertEquals(3, ProviderProperties.getIntOrDefault("sample.db.maximum-pool-size", 0));
     }
 
     @Test
@@ -112,15 +140,17 @@ class ProviderRuntimeConfigurationTest {
         return (T) input.readObject(type);
     }
 
-    private static Properties loadProperties() throws IOException {
-        try (InputStream input = ProviderRuntimeConfigurationTest.class
-                .getClassLoader()
-                .getResourceAsStream("rest-sample-dubbo-provider.properties")) {
-            assertNotNull(input, "rest-sample-dubbo-provider.properties must be available on the test classpath");
-            Properties properties = new Properties();
-            properties.load(input);
-            return properties;
+    private static Properties loadProperties(String... resources) throws IOException {
+        Properties properties = new Properties();
+        for (String resource : resources) {
+            try (InputStream input = ProviderRuntimeConfigurationTest.class
+                    .getClassLoader()
+                    .getResourceAsStream(resource)) {
+                assertNotNull(input, resource + " must be available on the test classpath");
+                properties.load(input);
+            }
         }
+        return properties;
     }
 
     private static int intValue(Properties properties, String key) {

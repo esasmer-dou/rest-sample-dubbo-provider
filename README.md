@@ -30,6 +30,27 @@ Use provider shape tables before choosing an image or Maven profile.
 
 Use the configuration table when you tune DB pool, ZooKeeper, or method concurrency.
 
+## Property Layers
+
+The default `src/main/resources/rest-sample-dubbo-provider.properties` is the minimum local file. It
+contains provider address, registry mode, default execution limit and DB connection values.
+
+Use production settings as an overlay:
+
+```powershell
+java "-Dreactor.config.file=src/main/resources/config/production.properties" ...
+```
+
+Use advanced tuning only after measuring provider p99, DB pool wait and RSS:
+
+```powershell
+java "-Dreactor.config.file=src/main/resources/config/production.properties;src/main/resources/config/advanced-tuning.properties" ...
+```
+
+- `config/production.properties`: Kubernetes host/bind, registry choice and Hikari pool defaults.
+- `config/advanced-tuning.properties`: interface/method bulkheads and Netty/Dubbo low-RSS knobs.
+- Environment alternative: `REACTOR_CONFIG_FILE=/app/config/production.properties`.
+
 ## What This Sample Is For
 
 Use this sample when you want to understand:
@@ -102,8 +123,6 @@ java "-Ddubbo.provider.host=127.0.0.1" `
   "-Dsample.db.password=reactor" `
   "-Dsample.db.schema-init=true" `
   "-Dsample.db.warmup=true" `
-  "-Dsample.db.maximum-pool-size=2" `
-  "-Dsample.db.minimum-idle=0" `
   -jar target/rest-sample-dubbo-provider-0.1.1.jar
 ```
 

@@ -2,6 +2,9 @@ package com.reactor.sample.dubbo.provider.config;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Locale;
 import java.util.Properties;
 
@@ -97,6 +100,36 @@ public final class ProviderProperties {
         } catch (IOException e) {
             throw new IllegalStateException("Could not load " + CLASSPATH_CONFIG, e);
         }
+        loadConfiguredOverlays(properties);
         return properties;
+    }
+
+    private static void loadConfiguredOverlays(Properties properties) {
+        String configured = System.getProperty("reactor.config.file");
+        if (configured == null || configured.isBlank()) {
+            configured = System.getenv("REACTOR_CONFIG_FILE");
+        }
+        if (configured == null || configured.isBlank()) {
+            return;
+        }
+        for (String rawPath : configured.split("[,;]")) {
+            String trimmed = rawPath.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            Path filePath = Paths.get(trimmed);
+            if (!Files.exists(filePath)) {
+                throw new IllegalStateException("Configured reactor.config.file does not exist: "
+                        + filePath.toAbsolutePath());
+            }
+            try (InputStream input = Files.newInputStream(filePath)) {
+                properties.load(input);
+            } catch (IOException e) {
+                throw new IllegalStateException("Failed to load reactor.config.file: "
+                        + filePath.toAbsolutePath(), e);
+            }
+            System.out.println("[rest-sample-dubbo-provider] properties overlay loaded from "
+                    + filePath.toAbsolutePath());
+        }
     }
 }
