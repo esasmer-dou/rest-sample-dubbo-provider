@@ -1,18 +1,15 @@
 package com.reactor.sample.dubbo.provider.db;
 
+import com.reactor.rust.dubbo.provider.jdbc.HikariDataSources;
+import com.reactor.rust.dubbo.provider.jdbc.JdbcRepository;
 import com.reactor.sample.dubbo.provider.config.ProviderProperties;
-import com.zaxxer.hikari.HikariConfig;
-import com.zaxxer.hikari.HikariDataSource;
 
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
-import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 
-public final class PostgresCustomerRepository implements AutoCloseable {
+public final class PostgresCustomerRepository extends JdbcRepository {
 
     private static final String SELECT_CUSTOMERS = """
             select id, customer_no, full_name, segment, email, status, created_at, updated_at
@@ -62,136 +59,57 @@ public final class PostgresCustomerRepository implements AutoCloseable {
             returning id, customer_no, full_name, segment, email, status, created_at, updated_at
             """;
 
-    private final HikariDataSource dataSource;
-    private final boolean schemaInit;
-    private volatile boolean initialized;
-
-    private PostgresCustomerRepository(HikariDataSource dataSource, boolean schemaInit) {
-        this.dataSource = dataSource;
-        this.schemaInit = schemaInit;
+    private PostgresCustomerRepository() {
+        super(
+                HikariDataSources.create(ProviderProperties.asProperties(), "sample.db"),
+                ProviderProperties.getBoolean("sample.db.schema-init"));
     }
 
     public static PostgresCustomerRepository fromProperties() {
-        HikariConfig config = new HikariConfig();
-        config.setPoolName(ProviderProperties.get("sample.db.pool-name"));
-        config.setDriverClassName(ProviderProperties.get("sample.db.driver-class-name"));
-        config.setJdbcUrl(ProviderProperties.get("sample.db.jdbc-url"));
-        config.setUsername(ProviderProperties.get("sample.db.username"));
-        config.setPassword(ProviderProperties.get("sample.db.password"));
-        config.setMaximumPoolSize(ProviderProperties.getInt("sample.db.maximum-pool-size"));
-        config.setMinimumIdle(ProviderProperties.getInt("sample.db.minimum-idle"));
-        config.setConnectionTimeout(ProviderProperties.getLong("sample.db.connection-timeout-ms"));
-        config.setValidationTimeout(ProviderProperties.getLong("sample.db.validation-timeout-ms"));
-        config.setIdleTimeout(ProviderProperties.getLong("sample.db.idle-timeout-ms"));
-        config.setMaxLifetime(ProviderProperties.getLong("sample.db.max-lifetime-ms"));
-        config.setLeakDetectionThreshold(ProviderProperties.getLong("sample.db.leak-detection-threshold-ms"));
-        config.setInitializationFailTimeout(ProviderProperties.getLong("sample.db.initialization-fail-timeout-ms"));
-        config.setAutoCommit(ProviderProperties.getBoolean("sample.db.auto-commit"));
-        config.setReadOnly(ProviderProperties.getBoolean("sample.db.read-only"));
-        config.setRegisterMbeans(ProviderProperties.getBoolean("sample.db.register-mbeans"));
-        config.addDataSourceProperty("ApplicationName", ProviderProperties.get("sample.db.postgresql.application-name"));
-
-        return new PostgresCustomerRepository(
-                new HikariDataSource(config),
-                ProviderProperties.getBoolean("sample.db.schema-init")
-        );
+        return new PostgresCustomerRepository();
     }
 
     public List<SampleCustomer> findCustomers() {
-        ensureInitialized();
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(SELECT_CUSTOMERS);
-             ResultSet resultSet = statement.executeQuery()) {
-            List<SampleCustomer> customers = new ArrayList<>(100);
-            while (resultSet.next()) {
-                customers.add(toCustomer(resultSet));
-            }
-            return customers;
-        } catch (Exception e) {
-            throw new IllegalStateException("Find customers failed", e);
-        }
+        return query("Find customers", SELECT_CUSTOMERS, SqlBinder.none(), PostgresCustomerRepository::toCustomer);
     }
 
     public SampleCustomer findCustomer(long customerId) {
-        ensureInitialized();
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(SELECT_CUSTOMER_BY_ID)) {
+        return queryOne("Find customer", SELECT_CUSTOMER_BY_ID, statement -> {
             statement.setLong(1, customerId);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                return resultSet.next() ? toCustomer(resultSet) : null;
-            }
-        } catch (Exception e) {
-            throw new IllegalStateException("Find customer failed", e);
-        }
+        }, PostgresCustomerRepository::toCustomer, null);
     }
 
     public List<SampleCustomer> findCustomersBySegment(String segment, int limit) {
-        ensureInitialized();
         int boundedLimit = Math.max(1, Math.min(limit, 100));
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(SELECT_CUSTOMERS_BY_SEGMENT)) {
+        return query("Find customers by segment", SELECT_CUSTOMERS_BY_SEGMENT, statement -> {
             statement.setString(1, segment == null || segment.isBlank() ? "standard" : segment);
             statement.setInt(2, boundedLimit);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                List<SampleCustomer> customers = new ArrayList<>();
-                while (resultSet.next()) {
-                    customers.add(toCustomer(resultSet));
-                }
-                return customers;
-            }
-        } catch (Exception e) {
-            throw new IllegalStateException("Find customers by segment failed", e);
-        }
+        }, PostgresCustomerRepository::toCustomer);
     }
 
     public CustomerCounts countCustomersByStatus() {
-        ensureInitialized();
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(SELECT_CUSTOMER_COUNTS);
-             ResultSet resultSet = statement.executeQuery()) {
-            if (!resultSet.next()) {
-                return new CustomerCounts(0, 0, 0);
-            }
-            return new CustomerCounts(
-                    resultSet.getInt("total"),
-                    resultSet.getInt("active"),
-                    resultSet.getInt("passive")
-            );
-        } catch (Exception e) {
-            throw new IllegalStateException("Count customers failed", e);
-        }
+        return queryOne(
+                "Count customers",
+                SELECT_CUSTOMER_COUNTS,
+                SqlBinder.none(),
+                row -> new CustomerCounts(row.getInt("total"), row.getInt("active"), row.getInt("passive")),
+                new CustomerCounts(0, 0, 0));
     }
 
     public boolean customerExists(long customerId) {
-        ensureInitialized();
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(SELECT_CUSTOMER_EXISTS)) {
+        return queryOne("Check customer existence", SELECT_CUSTOMER_EXISTS, statement -> {
             statement.setLong(1, customerId);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                return resultSet.next();
-            }
-        } catch (Exception e) {
-            throw new IllegalStateException("Check customer existence failed", e);
-        }
+        }, row -> true, false);
     }
 
     public String customerDisplayName(long customerId) {
-        ensureInitialized();
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(SELECT_CUSTOMER_DISPLAY_NAME)) {
+        return queryOne("Find customer display name", SELECT_CUSTOMER_DISPLAY_NAME, statement -> {
             statement.setLong(1, customerId);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                return resultSet.next() ? resultSet.getString("full_name") : "";
-            }
-        } catch (Exception e) {
-            throw new IllegalStateException("Find customer display name failed", e);
-        }
+        }, row -> row.getString("full_name"), "");
     }
 
     public SampleCustomer createCustomer(String customerNo, String fullName, String segment, String email) {
-        ensureInitialized();
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement("""
+        SampleCustomer customer = queryOne("Create customer", """
                      insert into sample_customers (customer_no, full_name, segment, email, status)
                      values (?, ?, ?, ?, 'active')
                      on conflict (customer_no) do update set
@@ -201,20 +119,16 @@ public final class PostgresCustomerRepository implements AutoCloseable {
                        status = 'active',
                        updated_at = now()
                      returning id, customer_no, full_name, segment, email, status, created_at, updated_at
-                     """)) {
+                     """, statement -> {
             statement.setString(1, customerNo);
             statement.setString(2, fullName);
             statement.setString(3, segment);
             statement.setString(4, email);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (resultSet.next()) {
-                    return toCustomer(resultSet);
-                }
-                throw new IllegalStateException("Create customer returned no row");
-            }
-        } catch (Exception e) {
-            throw new IllegalStateException("Create customer failed", e);
+        }, PostgresCustomerRepository::toCustomer, null);
+        if (customer == null) {
+            throw new IllegalStateException("Create customer returned no row");
         }
+        return customer;
     }
 
     public SampleCustomer updateSegment(long customerId, String segment) {
@@ -226,35 +140,18 @@ public final class PostgresCustomerRepository implements AutoCloseable {
     }
 
     public boolean deleteCustomer(long customerId) {
-        ensureInitialized();
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement("""
+        return update("Delete customer", """
                      delete from sample_customers
                      where id = ?
-                     """)) {
+                     """, statement -> {
             statement.setLong(1, customerId);
-            return statement.executeUpdate() > 0;
-        } catch (Exception e) {
-            throw new IllegalStateException("Delete customer failed", e);
-        }
+        }) > 0;
     }
 
     @Override
-    public void close() {
-        dataSource.close();
-    }
-
-    private void ensureInitialized() {
-        if (!schemaInit || initialized) {
-            return;
-        }
-        synchronized (this) {
-            if (initialized) {
-                return;
-            }
-            try (Connection connection = dataSource.getConnection();
-                 Statement statement = connection.createStatement()) {
-                statement.executeUpdate("""
+    protected void initializeSchema(Connection connection) throws Exception {
+        try (Statement statement = connection.createStatement()) {
+            statement.executeUpdate("""
                         create table if not exists sample_customers (
                           id bigserial primary key,
                           customer_no varchar(32) not null unique,
@@ -265,10 +162,10 @@ public final class PostgresCustomerRepository implements AutoCloseable {
                           created_at timestamptz not null default now()
                         )
                         """);
-                statement.executeUpdate("alter table sample_customers add column if not exists email varchar(160) not null default ''");
-                statement.executeUpdate("alter table sample_customers add column if not exists status varchar(32) not null default 'active'");
-                statement.executeUpdate("alter table sample_customers add column if not exists updated_at timestamptz not null default now()");
-                statement.executeUpdate("""
+            statement.executeUpdate("alter table sample_customers add column if not exists email varchar(160) not null default ''");
+            statement.executeUpdate("alter table sample_customers add column if not exists status varchar(32) not null default 'active'");
+            statement.executeUpdate("alter table sample_customers add column if not exists updated_at timestamptz not null default now()");
+            statement.executeUpdate("""
                         insert into sample_customers (customer_no, full_name, segment, email, status)
                         values
                           ('CUST-1001', 'Mustafa Korkmaz', 'pilot', 'mustafa.korkmaz@example.com', 'active'),
@@ -276,28 +173,14 @@ public final class PostgresCustomerRepository implements AutoCloseable {
                           ('CUST-1003', 'Mehmet Celik', 'standard', 'mehmet.celik@example.com', 'passive')
                         on conflict (customer_no) do nothing
                         """);
-                initialized = true;
-            } catch (Exception e) {
-                throw new IllegalStateException("PostgreSQL sample schema init failed", e);
-            }
         }
     }
 
     private SampleCustomer updateSingleField(long customerId, String sql, String value) {
-        ensureInitialized();
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        return queryOne("Update customer", sql, statement -> {
             statement.setString(1, value);
             statement.setLong(2, customerId);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (resultSet.next()) {
-                    return toCustomer(resultSet);
-                }
-                return null;
-            }
-        } catch (Exception e) {
-            throw new IllegalStateException("Update customer failed", e);
-        }
+        }, PostgresCustomerRepository::toCustomer, null);
     }
 
     private static SampleCustomer toCustomer(ResultSet row) throws Exception {

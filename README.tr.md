@@ -908,6 +908,11 @@ Bu bir reflection scanner değildir. Hangi interface'lerin export edildiği kodd
 eden Dubbo lifecycle kodu ise tek helper içinde durur. Böylece startup öngörülebilir kalır ve gizli
 classpath büyümesi oluşmaz.
 
+DB boilerplate için de aynı kural geçerlidir. `PostgresCustomerRepository`,
+`com.reactor.rust.dubbo.provider.jdbc.JdbcRepository` sınıfından miras alır. Hikari kurulumu
+`HikariDataSources.create(...)` ile yapılır. Library connection, query ve lifecycle tesisatını
+üstlenir. SQL, index, row mapping ve write semantics kararı sample içinde açık kalır.
+
 ## Paket Yapısı
 
 ```text

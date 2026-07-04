@@ -903,6 +903,11 @@ This is not a reflection scanner. The exported interfaces stay explicit in code,
 Dubbo lifecycle code stays in one helper. That keeps startup predictable and avoids hidden classpath
 growth.
 
+DB boilerplate follows the same rule. `PostgresCustomerRepository` extends
+`com.reactor.rust.dubbo.provider.jdbc.JdbcRepository`, and Hikari setup comes from
+`HikariDataSources.create(...)`. The library owns connection/query/lifecycle plumbing. The sample
+still owns SQL, indexes, row mapping, and write semantics.
+
 ## Package Structure
 
 ```text
