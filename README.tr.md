@@ -3,11 +3,32 @@
 [English](README.md) | Türkçe
 
 Rust-Java REST consumer demosu için hazırlanmış minimal plain Java Dubbo provider örneğidir.
-ZooKeeper registration, PostgreSQL/HikariCP data access ve consumer'ın doğrudan forward edebileceği
-hazır JSON response üretimini gösterir.
 
-Bu repo, `rest-sample-dubbo-consumer` uygulamasının gerçek bir Dubbo provider'a karşı test
-edilebilmesi için hazırlandı. Spring Boot veya Dubbo Spring Boot starter kullanmaz.
+Static provider modu veya ZooKeeper registration ile çalışır. Hazır JSON dönebilir. PostgreSQL ve HikariCP kullanabilir.
+
+Spring Boot kullanmaz.
+
+## İçindekiler
+
+1. [Bu Örnek Ne İçin Hazırlandı?](#bu-örnek-ne-için-hazırlandı)
+2. [Kopyala-Yapıştır: Provider'ı Çalıştır](#kopyala-yapıştır-providerı-çalıştır)
+3. [Buradan Başlayın: Provider Şeklinizi Seçin](#buradan-başlayın-provider-şeklinizi-seçin)
+4. [Production Reçeteleri](#production-reçeteleri)
+5. [Mimari Akış](#mimari-akış)
+6. [Interface ve Method Bazlı Execution Limitleri](#interface-ve-method-bazlı-execution-limitleri)
+7. [Konfigürasyon](#konfigürasyon)
+8. [Hızlı Başlangıç](#hızlı-başlangıç)
+9. [Consumer ile Test](#consumer-ile-test)
+10. [Sözlük](#sözlük)
+11. [Sorun Giderme](#sorun-giderme)
+
+## Bu README Nasıl Okunmalı?
+
+Sadece çalıştırmak istiyorsan kopyala-yapıştır bölümüyle başla.
+
+Image veya Maven profile seçmeden önce provider şekli tablolarına bak.
+
+DB pool, ZooKeeper veya method concurrency ayarlıyorsan konfigürasyon tablosuna bak.
 
 ## Bu Örnek Ne İçin Hazırlandı?
 
@@ -1119,28 +1140,28 @@ Runtime değerleri properties dosyasındadır. Eksik veya hatalı property start
 
 Önemli property'ler:
 
-| Property | Açıklama |
-|----------|----------|
-| `dubbo.provider.host` | Dubbo provider URL içinde ilan edilen host. |
-| `dubbo.provider.bind-host` | Local bind host. Container içinde gerekirse `0.0.0.0`. |
-| `dubbo.provider.port` | Dubbo provider portu. Sample default değeri `20880`. |
-| `reactor.dubbo.registry-enabled` | ZooKeeper kaydını açar/kapatır. Sample default değeri static Service DNS için `false`; ZooKeeper discovery için `true` yapın. |
-| `reactor.dubbo.registry-address` | ZooKeeper registry adresi. Sadece `reactor.dubbo.registry-enabled=true` ise kullanılır. |
-| `reactor.dubbo.registry-root` | ZooKeeper namespace. Sadece `reactor.dubbo.registry-enabled=true` ise kullanılır. |
-| `dubbo.provider.service.default.max-concurrent` | Export edilen interface'ler için default concurrent invocation limiti. |
-| `dubbo.provider.service.NestedCatalogService.max-concurrent` | Catalog provider method'ları için concurrent invocation limiti. |
-| `dubbo.provider.service.NestedCatalogService.method.*.max-concurrent` | Typed/list catalog method'ları için opsiyonel method-level override. |
-| `dubbo.provider.service.CustomerQueryService.max-concurrent` | DB-backed customer provider method'ları için concurrent invocation limiti. |
-| `dubbo.provider.service.CustomerQueryService.method.*.max-concurrent` | Raw JSON, record lookup, list query ve stats method'ları için method-level override. DB-backed method'ları Hikari ile hizalı tutun. |
-| `dubbo.provider.service.CustomerCommandService.max-concurrent` | Write-side customer command'leri için concurrent invocation limiti. |
-| `dubbo.provider.service.CustomerCommandService.method.*.max-concurrent` | Byte command ve typed command method'ları için method-level write command override'ları. Hikari ile hizalı tutun. |
-| `sample.db.jdbc-url` | PostgreSQL JDBC URL. |
-| `sample.db.maximum-pool-size` | Hikari maximum pool size. |
-| `sample.db.minimum-idle` | Hikari minimum idle connection sayısı. `0` idle RSS'i düşük tutar. |
-| `sample.db.connection-timeout-ms` | DB connection bekleme üst limiti. Default `3000`; lokal cold start'ı kullanılabilir tutar ama DB down ise fail-fast kalır. |
-| `sample.db.schema-init` | True ise demo tablo/data oluşturur. |
-| `sample.db.warmup` | Provider hazır olmadan önce DB connection ve seed işlemini yapar. |
-| `io.netty.allocator.numDirectArenas` | Low-RSS Netty allocator tuning. |
+| Property | Ne işe yarar? | Ne zaman değiştirirsin? |
+|----------|---------------|-------------------------|
+| `dubbo.provider.host` | Dubbo URL içinde provider host bilgisini ilan eder. | Pod IP, node IP veya erişilebilir host ne ise ona göre ayarla. |
+| `dubbo.provider.bind-host` | Local bind host seçer. | Container içinde gerekirse `0.0.0.0` yap. |
+| `dubbo.provider.port` | Dubbo provider portunu açar. | `20880` uygun değilse değiştir. |
+| `reactor.dubbo.registry-enabled` | ZooKeeper registration açar veya kapatır. | Static Service DNS için `false`; ZooKeeper discovery için `true`. |
+| `reactor.dubbo.registry-address` | ZooKeeper adresini verir. | Sadece registry açıksa doldur. |
+| `reactor.dubbo.registry-root` | ZooKeeper namespace değeridir. | Platform farklı root kullanıyorsa değiştir. |
+| `dubbo.provider.service.default.max-concurrent` | Default method concurrency limitidir. | Küçük pod için düşür. Sadece load test sonrası artır. |
+| `dubbo.provider.service.NestedCatalogService.max-concurrent` | Catalog interface concurrency limitidir. | Catalog read trafiğine göre ayarla. |
+| `dubbo.provider.service.NestedCatalogService.method.*.max-concurrent` | Catalog method bazlı override sağlar. | List/heavy methodları tüm interface'i kısmadan sınırlamak için kullan. |
+| `dubbo.provider.service.CustomerQueryService.max-concurrent` | DB query interface concurrency limitidir. | Hikari pool size ile hizala. |
+| `dubbo.provider.service.CustomerQueryService.method.*.max-concurrent` | DB query method override sağlar. | List/stats query p99 yükselirse düşür. |
+| `dubbo.provider.service.CustomerCommandService.max-concurrent` | Write command concurrency limitidir. | DB ve idempotency korunacak şekilde bounded tut. |
+| `dubbo.provider.service.CustomerCommandService.method.*.max-concurrent` | Write method override sağlar. | Aynı row üzerinde yarışan hot command'leri düşür. |
+| `sample.db.jdbc-url` | PostgreSQL bağlantısını verir. | Her ortamda kendi DB adresini ver. |
+| `sample.db.maximum-pool-size` | Hikari connection üst limitidir. | DB kapasitesi ve provider method limitleriyle hizala. |
+| `sample.db.minimum-idle` | Idle DB connection sayısını belirler. | Idle RSS düşük olsun istiyorsan `0` kullan. |
+| `sample.db.connection-timeout-ms` | DB connection bekleme süresini sınırlar. | Fail-fast için düşür. Yavaş startup için ölçerek artır. |
+| `sample.db.schema-init` | Demo schema ve data oluşturur. | Production'da `false` olmalı. |
+| `sample.db.warmup` | Ready olmadan önce DB connection açar. | İlk request latency önemliyse aç. |
+| `io.netty.allocator.numDirectArenas` | Netty direct memory arena sayısını ayarlar. | RSS hassas podlarda düşük tut. |
 
 ## Hızlı Başlangıç
 
@@ -1305,6 +1326,23 @@ Notlar:
 - Bu workspace'teki lokal smoke testte DB warmup kapalı provider RSS yaklaşık `55.8 MiB` görüldü. DB-backed çalışma daha yüksek olur; Hikari, JDBC, schema init ve aktif connection'lar memory ekler.
 - `docker/images/Dockerfile.jlink.db-query`, `db-query-provider` profile'ı altında `mvn clean package` çalıştırır. Böylece eski derlenmiş sınıflar query-only jar içine command/catalog servislerini yanlışlıkla taşıyamaz.
 - `REACTOR_DUBBO_REGISTRY_ENABLED=false` ise ZooKeeper gerekmez; consumer provider'a Docker/Kubernetes service DNS üzerinden gidebilir.
+
+## Sözlük
+
+| Terim | Anlamı |
+|---|---|
+| Provider | Business method'ları dışarı açan Dubbo server'dır. |
+| Consumer | Bu provider'ı çağıran REST servisidir. |
+| Static mod | Provider ZooKeeper'a kayıt olmaz. Consumer Service DNS veya sabit adres kullanır. |
+| ZooKeeper registration | Provider'ın Dubbo URL bilgisini ZooKeeper'a yazmasıdır. |
+| HikariCP | DB-backed method'lar için kullanılan JDBC connection pool'dur. |
+| ActiveJDBC | Sample içinde kullanılan hafif DB erişim katmanıdır. |
+| Method limiti | Tek provider method'u için eşzamanlı çağrı üst sınırıdır. |
+| Interface limiti | Tek provider interface'i için eşzamanlı çağrı üst sınırıdır. |
+| Bulkhead | Yoğun bir method'un diğer işleri bozmasını engelleyen limittir. |
+| Hot row | Aynı anda çok sayıda write alan database satırıdır. |
+| RSS | Kubernetes memory limitinin gördüğü process memory değeridir. |
+| Hazır JSON | Provider tarafından serialize edilmiş JSON byte verisidir. Consumer bunu doğrudan forward edebilir. |
 
 ## Sorun Giderme
 

@@ -2,11 +2,33 @@
 
 English | [Turkish](README.tr.md)
 
-Minimal plain Java Dubbo provider sample for the Rust-Java REST consumer demo, with ZooKeeper
-registration, PostgreSQL/HikariCP data access, and ready-to-forward JSON responses.
+Minimal plain Java Dubbo provider for the Rust-Java REST consumer demo.
 
-This repository exists so `rest-sample-dubbo-consumer` can be tested against a real Dubbo provider
-without bringing Spring Boot or Dubbo Spring Boot starter into the sample.
+It can run with static provider mode or ZooKeeper registration. It can return ready JSON. It can also use PostgreSQL with HikariCP.
+
+It does not use Spring Boot.
+
+## Contents
+
+1. [What This Sample Is For](#what-this-sample-is-for)
+2. [Copy-Paste: Run The Provider](#copy-paste-run-the-provider)
+3. [Start Here: Pick Your Provider Shape](#start-here-pick-your-provider-shape)
+4. [Production Recipes](#production-recipes)
+5. [Architecture](#architecture)
+6. [Per-Interface and Per-Method Execution Limits](#per-interface-and-per-method-execution-limits)
+7. [Configuration](#configuration)
+8. [Quick Start](#quick-start)
+9. [Test With Consumer](#test-with-consumer)
+10. [Glossary](#glossary)
+11. [Troubleshooting](#troubleshooting)
+
+## How To Read This README
+
+Start with the copy-paste section if you only want to run it.
+
+Use provider shape tables before choosing an image or Maven profile.
+
+Use the configuration table when you tune DB pool, ZooKeeper, or method concurrency.
 
 ## What This Sample Is For
 
@@ -1114,28 +1136,28 @@ Runtime values live in the properties file. Missing or invalid properties fail f
 
 Important properties:
 
-| Property | Purpose |
-|----------|---------|
-| `dubbo.provider.host` | Host advertised in the Dubbo provider URL. |
-| `dubbo.provider.bind-host` | Local bind host. Use `0.0.0.0` in containers if needed. |
-| `dubbo.provider.port` | Dubbo provider port. Default sample value is `20880`. |
-| `reactor.dubbo.registry-enabled` | Enables ZooKeeper registration. Sample default is `false` for static Service DNS mode; set `true` for ZooKeeper discovery. |
-| `reactor.dubbo.registry-address` | ZooKeeper registry address. Used only when `reactor.dubbo.registry-enabled=true`. |
-| `reactor.dubbo.registry-root` | ZooKeeper namespace. Used only when `reactor.dubbo.registry-enabled=true`. |
-| `dubbo.provider.service.default.max-concurrent` | Default concurrent invocation limit for exported interfaces. |
-| `dubbo.provider.service.NestedCatalogService.max-concurrent` | Concurrent invocation limit for catalog provider methods. |
-| `dubbo.provider.service.NestedCatalogService.method.*.max-concurrent` | Optional method-level catalog overrides for typed/list methods. |
-| `dubbo.provider.service.CustomerQueryService.max-concurrent` | Concurrent invocation limit for DB-backed customer provider methods. |
-| `dubbo.provider.service.CustomerQueryService.method.*.max-concurrent` | Method-level overrides for raw JSON, record lookup, list query, and stats methods. Keep DB-backed methods aligned with Hikari. |
-| `dubbo.provider.service.CustomerCommandService.max-concurrent` | Concurrent invocation limit for write-side customer commands. |
-| `dubbo.provider.service.CustomerCommandService.method.*.max-concurrent` | Method-level write command overrides for byte command and typed command methods. Keep aligned with Hikari. |
-| `sample.db.jdbc-url` | PostgreSQL JDBC URL. |
-| `sample.db.maximum-pool-size` | Hikari maximum pool size. |
-| `sample.db.minimum-idle` | Hikari minimum idle connections. `0` keeps idle RSS lower. |
-| `sample.db.connection-timeout-ms` | Maximum time to wait for a DB connection. Default `3000` keeps local cold start usable while still failing fast. |
-| `sample.db.schema-init` | Creates demo table and data when true. |
-| `sample.db.warmup` | Opens DB connection and seeds data before provider is ready. |
-| `io.netty.allocator.numDirectArenas` | Low-RSS Netty allocator tuning. |
+| Property | What it does | When to change |
+|----------|--------------|----------------|
+| `dubbo.provider.host` | Advertises the provider host in the Dubbo URL. | Set to pod IP, node IP, or service-reachable host. |
+| `dubbo.provider.bind-host` | Chooses the local bind host. | Use `0.0.0.0` in containers if needed. |
+| `dubbo.provider.port` | Opens the Dubbo provider port. | Change when `20880` is not available. |
+| `reactor.dubbo.registry-enabled` | Turns ZooKeeper registration on or off. | Use `false` for static Service DNS. Use `true` for ZooKeeper discovery. |
+| `reactor.dubbo.registry-address` | Points to ZooKeeper. | Set only when registry is enabled. |
+| `reactor.dubbo.registry-root` | Sets the ZooKeeper namespace. | Change only if your platform uses a different root. |
+| `dubbo.provider.service.default.max-concurrent` | Default method concurrency limit. | Lower for small pods. Raise only after load test. |
+| `dubbo.provider.service.NestedCatalogService.max-concurrent` | Catalog interface concurrency limit. | Tune for catalog read traffic. |
+| `dubbo.provider.service.NestedCatalogService.method.*.max-concurrent` | Catalog method override. | Lower list/heavy methods without limiting all catalog methods. |
+| `dubbo.provider.service.CustomerQueryService.max-concurrent` | DB query interface concurrency limit. | Keep aligned with Hikari pool size. |
+| `dubbo.provider.service.CustomerQueryService.method.*.max-concurrent` | DB query method override. | Lower list/stats queries if DB p99 rises. |
+| `dubbo.provider.service.CustomerCommandService.max-concurrent` | Write command concurrency limit. | Keep bounded to protect DB and idempotency. |
+| `dubbo.provider.service.CustomerCommandService.method.*.max-concurrent` | Write method override. | Lower hot commands that contend on the same rows. |
+| `sample.db.jdbc-url` | Connects to PostgreSQL. | Set per environment. |
+| `sample.db.maximum-pool-size` | Caps Hikari connections. | Match DB capacity and provider method limits. |
+| `sample.db.minimum-idle` | Keeps idle DB connections. | Use `0` for lower idle RSS. |
+| `sample.db.connection-timeout-ms` | Limits DB connection wait time. | Lower for fail-fast behavior. Raise only for slow startup. |
+| `sample.db.schema-init` | Creates demo schema and data. | Keep `false` in production. |
+| `sample.db.warmup` | Opens DB connection before ready state. | Enable when first-request latency matters. |
+| `io.netty.allocator.numDirectArenas` | Tunes Netty direct memory arenas. | Keep low for RSS-sensitive pods. |
 
 ## Quick Start
 
@@ -1299,6 +1321,23 @@ Notes:
 - Local smoke in this workspace observed about `55.8 MiB` provider RSS with DB warmup disabled. DB-backed runs will be higher because Hikari, JDBC, schema init, and active connections add memory.
 - `docker/images/Dockerfile.jlink.db-query` builds with `mvn clean package` under the `db-query-provider` profile so old compiled classes cannot leak command/catalog services into the query-only jar.
 - If `REACTOR_DUBBO_REGISTRY_ENABLED=false`, ZooKeeper is not required; the consumer can call the provider through Docker/Kubernetes service DNS.
+
+## Glossary
+
+| Term | Meaning |
+|---|---|
+| Provider | The Dubbo server that exports business methods. |
+| Consumer | The REST service that calls this provider. |
+| Static mode | Provider does not register to ZooKeeper. Consumer uses Service DNS or fixed address. |
+| ZooKeeper registration | Provider writes its Dubbo URL to ZooKeeper. |
+| HikariCP | JDBC connection pool used by DB-backed provider methods. |
+| ActiveJDBC | Lightweight DB access layer used by the sample. |
+| Method limit | Maximum concurrent calls for one provider method. |
+| Interface limit | Maximum concurrent calls for one provider interface. |
+| Bulkhead | A limit that isolates one busy method from the rest of the provider. |
+| Hot row | A database row that many writes try to update at the same time. |
+| RSS | Process memory seen by Kubernetes memory limits. |
+| Ready JSON | JSON bytes already serialized by the provider. The consumer can forward them directly. |
 
 ## Troubleshooting
 
