@@ -8,6 +8,10 @@ It can run with static provider mode or ZooKeeper registration. It can return re
 
 It does not use Spring Boot.
 
+Shared Dubbo service interfaces come from `com.reactor.sample:sample-utility:0.1.0`. Shared DTO and
+row model records come from `com.reactor.sample:sample-model:0.1.0`. The service interface package
+name remains `com.reactor.rust.dubbo.sample` to keep Dubbo registry paths stable.
+
 ## Contents
 
 1. [What This Sample Is For](#what-this-sample-is-for)
@@ -130,16 +134,15 @@ Keep this terminal open. Consumer requests go to this process.
 
 ## Maven Package Access
 
-This provider sample does **not** depend on `rust-java-rest` or `java-rust-dubbo`. It is a plain Java
-Dubbo provider and uses public Maven dependencies such as Apache Dubbo, HikariCP, PostgreSQL JDBC,
-and ActiveJDBC. Because of that, a normal provider build does not need a GitHub Packages token.
+This provider is still a plain Java Dubbo provider. It does not use `rust-java-rest`, but it does use
+small shared sample packages:
 
-The GitHub Packages `settings.xml` / `read:packages` requirement belongs to projects that consume
-private `com.reactor` artifacts, for example `rest-sample-dubbo-consumer` when it downloads
-`rust-java-rest` and `java-rust-dubbo` from GitHub Packages.
+- `com.reactor.sample:sample-utility` for Dubbo service interfaces.
+- `com.reactor.sample:sample-model` for DTO and row model records.
+- `com.reactor:java-rust-dubbo` for provider helper classes such as `DubboProviderSupport` and JDBC helpers.
 
-If you later add a private `com.reactor` dependency to this provider, then add the same Maven
-repository and `~/.m2/settings.xml` credentials used by the consumer sample.
+If these packages are private GitHub Packages, Maven needs `read:packages` credentials for
+`github-java-rust-dubbo`, `github-sample-utility`, and `github-sample-model`.
 
 ## Start Here: Pick Your Provider Shape
 

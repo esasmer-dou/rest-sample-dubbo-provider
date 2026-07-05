@@ -3,6 +3,8 @@ package com.reactor.sample.dubbo.provider.db;
 import com.reactor.rust.dubbo.provider.jdbc.HikariDataSources;
 import com.reactor.rust.dubbo.provider.jdbc.JdbcRepository;
 import com.reactor.sample.dubbo.provider.config.ProviderProperties;
+import com.reactor.sample.model.customer.CustomerCounts;
+import com.reactor.sample.model.customer.SampleCustomer;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -194,9 +196,6 @@ public final class PostgresCustomerRepository extends JdbcRepository {
                 row.getTimestamp("created_at").toInstant(),
                 row.getTimestamp("updated_at").toInstant()
         );
-    }
-
-    public record CustomerCounts(int total, int active, int passive) {
     }
 
 }

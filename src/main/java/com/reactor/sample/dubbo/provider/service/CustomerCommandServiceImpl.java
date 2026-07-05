@@ -4,7 +4,7 @@ import com.reactor.rust.dubbo.sample.CustomerCommandService;
 import com.reactor.rust.dubbo.sample.dto.CreateCustomerCommand;
 import com.reactor.rust.dubbo.sample.dto.CustomerMutationResult;
 import com.reactor.sample.dubbo.provider.db.PostgresCustomerRepository;
-import com.reactor.sample.dubbo.provider.db.SampleCustomer;
+import com.reactor.sample.model.customer.SampleCustomer;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;

@@ -4,7 +4,8 @@ import com.reactor.rust.dubbo.sample.CustomerQueryService;
 import com.reactor.rust.dubbo.sample.dto.CustomerStats;
 import com.reactor.rust.dubbo.sample.dto.CustomerSummary;
 import com.reactor.sample.dubbo.provider.db.PostgresCustomerRepository;
-import com.reactor.sample.dubbo.provider.db.SampleCustomer;
+import com.reactor.sample.model.customer.CustomerCounts;
+import com.reactor.sample.model.customer.SampleCustomer;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -70,7 +71,7 @@ public final class CustomerQueryServiceImpl implements CustomerQueryService, Aut
 
     @Override
     public CustomerStats getCustomerStats() {
-        PostgresCustomerRepository.CustomerCounts counts = customerRepository.countCustomersByStatus();
+        CustomerCounts counts = customerRepository.countCustomersByStatus();
         return new CustomerStats(
                 counts.total(),
                 counts.active(),
