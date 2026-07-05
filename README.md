@@ -8,8 +8,8 @@ It can run with static provider mode or ZooKeeper registration. It can return re
 
 It does not use Spring Boot.
 
-Shared Dubbo service interfaces come from `com.reactor.sample:sample-utility:0.1.0`. Shared DTO and
-row model records come from `com.reactor.sample:sample-model:0.1.0`. The service interface package
+Shared Dubbo service interfaces come from `com.reactor.sample:rest-sample-utility:0.1.0`. Shared DTO and
+row model records come from `com.reactor.sample:rust-sample-model:0.1.0`. The service interface package
 name remains `com.reactor.rust.dubbo.sample` to keep Dubbo registry paths stable.
 
 ## Contents
@@ -137,12 +137,12 @@ Keep this terminal open. Consumer requests go to this process.
 This provider is still a plain Java Dubbo provider. It does not use `rust-java-rest`, but it does use
 small shared sample packages:
 
-- `com.reactor.sample:sample-utility` for Dubbo service interfaces.
-- `com.reactor.sample:sample-model` for DTO and row model records.
+- `com.reactor.sample:rest-sample-utility` for Dubbo service interfaces.
+- `com.reactor.sample:rust-sample-model` for DTO and row model records.
 - `com.reactor:java-rust-dubbo` for provider helper classes such as `DubboProviderSupport` and JDBC helpers.
 
 If these packages are private GitHub Packages, Maven needs `read:packages` credentials for
-`github-java-rust-dubbo`, `github-sample-utility`, and `github-sample-model`.
+`github-java-rust-dubbo`, `github-rest-sample-utility`, and `github-rust-sample-model`.
 
 ## Start Here: Pick Your Provider Shape
 

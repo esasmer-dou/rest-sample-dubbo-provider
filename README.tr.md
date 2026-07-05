@@ -8,8 +8,8 @@ Static provider modu veya ZooKeeper registration ile çalışır. Hazır JSON d�
 
 Spring Boot kullanmaz.
 
-Ortak Dubbo service interface'leri `com.reactor.sample:sample-utility:0.1.0` paketinden gelir. Ortak
-DTO ve row model record'ları `com.reactor.sample:sample-model:0.1.0` paketinden gelir. Dubbo registry
+Ortak Dubbo service interface'leri `com.reactor.sample:rest-sample-utility:0.1.0` paketinden gelir. Ortak
+DTO ve row model record'ları `com.reactor.sample:rust-sample-model:0.1.0` paketinden gelir. Dubbo registry
 path'leri bozulmasın diye service interface package adı `com.reactor.rust.dubbo.sample` olarak korunur.
 
 ## İçindekiler
@@ -137,12 +137,12 @@ Provider terminalini açık bırakın. Consumer çağrıları bu process'e gider
 Bu provider hâlâ plain Java Dubbo provider'dır. `rust-java-rest` kullanmaz. Ancak küçük ortak sample
 paketlerini kullanır:
 
-- `com.reactor.sample:sample-utility`: Dubbo service interface'leri.
-- `com.reactor.sample:sample-model`: DTO ve row model record'ları.
+- `com.reactor.sample:rest-sample-utility`: Dubbo service interface'leri.
+- `com.reactor.sample:rust-sample-model`: DTO ve row model record'ları.
 - `com.reactor:java-rust-dubbo`: `DubboProviderSupport` ve JDBC helper sınıfları.
 
 Bu paketler private GitHub Packages olarak yayınlanıyorsa Maven tarafında `github-java-rust-dubbo`,
-`github-sample-utility` ve `github-sample-model` için `read:packages` credential gerekir.
+`github-rest-sample-utility` ve `github-rust-sample-model` için `read:packages` credential gerekir.
 
 ## Buradan Başlayın: Provider Şeklinizi Seçin
 

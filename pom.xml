@@ -25,7 +25,7 @@
         <log4j.version>2.19.0</log4j.version>
         <junit.version>5.10.2</junit.version>
         <java-rust-dubbo.version>0.2.3</java-rust-dubbo.version>
-        <sample-utility.version>0.1.0</sample-utility.version>
+        <rest-sample-utility.version>0.1.0</rest-sample-utility.version>
         <provider.mainClass>com.reactor.sample.dubbo.provider.app.RestSampleDubboProviderApplication</provider.mainClass>
     </properties>
 
@@ -47,8 +47,8 @@
     <dependencies>
         <dependency>
             <groupId>com.reactor.sample</groupId>
-            <artifactId>sample-utility</artifactId>
-            <version>${sample-utility.version}</version>
+            <artifactId>rest-sample-utility</artifactId>
+            <version>${rest-sample-utility.version}</version>
         </dependency>
         <dependency>
             <groupId>com.reactor</groupId>
@@ -152,12 +152,12 @@
             <url>https://maven.pkg.github.com/esasmer-dou/java-rust-dubbo</url>
         </repository>
         <repository>
-            <id>github-sample-utility</id>
-            <url>https://maven.pkg.github.com/esasmer-dou/sample-utility</url>
+            <id>github-rest-sample-utility</id>
+            <url>https://maven.pkg.github.com/esasmer-dou/rest-sample-utility</url>
         </repository>
         <repository>
-            <id>github-sample-model</id>
-            <url>https://maven.pkg.github.com/esasmer-dou/sample-model</url>
+            <id>github-rust-sample-model</id>
+            <url>https://maven.pkg.github.com/esasmer-dou/rust-sample-model</url>
         </repository>
     </repositories>
 
