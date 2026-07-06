@@ -812,6 +812,24 @@ services, start at the Hikari max pool size or lower. For CPU-heavy serializatio
 available CPU capacity and validate p99 under load. ANTI-PATTERN: set every interface to a large
 number and let the DB pool, heap, or Netty threads absorb overload.
 
+### How Consumer Recipes Map To Provider Capacity
+
+Consumer benchmark names such as `micro-1x1` and `balanced-stable-4x4` are not provider profiles.
+They describe how much work the REST consumer is allowed to send toward this provider. The provider
+still controls the real database concurrency through Hikari and per-interface/per-method gates.
+
+| Consumer recipe | What reaches this provider | Provider starting point | Why |
+|-----------------|----------------------------|-------------------------|-----|
+| `micro-1x1` | Small number of concurrent RPC calls. Good for low RSS consumers. | <small><code>sample.db.maximum-pool-size=1</code><br><code>dubbo.provider.service.CustomerQueryService.max-concurrent=1</code><br><code>dubbo.provider.service.CustomerCommandService.max-concurrent=1</code></small> | Keeps DB work strictly bounded. Spikes become fast `503` instead of deep queues. |
+| `micro-2x2` | More consumer-side RPC parallelism. | <small><code>sample.db.maximum-pool-size=2</code><br><code>dubbo.provider.service.CustomerQueryService.max-concurrent=2</code><br><code>dubbo.provider.service.CustomerCommandService.max-concurrent=2</code></small> | Useful when PostgreSQL and provider CPU have measured headroom. |
+| `balanced-stable-4x4` | More accepted read/command work, with shorter queues than wide mode. | <small><code>sample.db.maximum-pool-size=4</code><br><code>dubbo.provider.service.CustomerQueryService.max-concurrent=4</code><br><code>dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent=2-4</code></small> | Higher 2xx RPS. Requires DB wait, p99, and RSS checks. |
+| `balanced-wide-4x4` | Widest consumer route budget. | Only if PostgreSQL, provider CPU, and row-lock behavior are proven under load. | Otherwise it hides overload in queues and raises p99/RSS. |
+
+Do not read `c64` or `c256` as Hikari connection counts. Those values are client concurrency levels
+in a load test. If Hikari has `2` connections, only two DB calls can run at the same time. Extra
+requests wait in consumer/provider queues or fail fast. Bigger queues may reduce `503`, but they also
+increase RSS and p99.
+
 ## Provider Use Case Cookbook
 
 These examples are called through the REST consumer, but the behavior is implemented here in the

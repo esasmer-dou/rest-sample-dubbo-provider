@@ -815,6 +815,24 @@ Hikari max pool size veya daha düşük bir değerle başlamak doğru olur. CPU-
 servislerinde CPU kapasitesine göre başlayıp p99 load test ile doğrulayın. ANTI-PATTERN: tüm
 interface'lere büyük sayı verip overload'u DB pool, heap veya Netty thread'lerine bırakmak.
 
+### Consumer Reçeteleri Provider Kapasitesine Nasıl Bağlanır?
+
+`micro-1x1` ve `balanced-stable-4x4` gibi consumer benchmark isimleri provider profile değildir.
+Bunlar REST consumer'ın bu provider'a ne kadar iş göndermesine izin verildiğini anlatır. Gerçek DB
+concurrency ise provider tarafında Hikari ve interface/method gate değerleriyle kontrol edilir.
+
+| Consumer reçetesi | Provider'a ne gelir? | Provider başlangıç ayarı | Neden |
+|-------------------|----------------------|--------------------------|-------|
+| `micro-1x1` | Az sayıda concurrent RPC. Low-RSS consumer için uygundur. | <small><code>sample.db.maximum-pool-size=1</code><br><code>dubbo.provider.service.CustomerQueryService.max-concurrent=1</code><br><code>dubbo.provider.service.CustomerCommandService.max-concurrent=1</code></small> | DB işi sıkı sınırda kalır. Spike, derin queue yerine hızlı `503` üretir. |
+| `micro-2x2` | Consumer tarafında daha fazla RPC paralelliği. | <small><code>sample.db.maximum-pool-size=2</code><br><code>dubbo.provider.service.CustomerQueryService.max-concurrent=2</code><br><code>dubbo.provider.service.CustomerCommandService.max-concurrent=2</code></small> | PostgreSQL ve provider CPU tarafında ölçülmüş boşluk varsa faydalıdır. |
+| `balanced-stable-4x4` | Daha çok read/command işi kabul edilir; queue, wide moda göre daha kontrollüdür. | <small><code>sample.db.maximum-pool-size=4</code><br><code>dubbo.provider.service.CustomerQueryService.max-concurrent=4</code><br><code>dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent=2-4</code></small> | 2xx RPS artar. DB wait, p99 ve RSS birlikte ölçülmelidir. |
+| `balanced-wide-4x4` | Consumer route budget en geniş haldedir. | Sadece PostgreSQL, provider CPU ve row-lock davranışı load test ile kanıtlandıysa. | Aksi halde overload queue içinde saklanır, p99/RSS artar. |
+
+`c64` veya `c256` değerlerini Hikari connection sayısı gibi okumayın. Bunlar load testteki client
+concurrency seviyeleridir. Hikari `2` ise aynı anda sadece iki DB çağrısı çalışır. Diğer request'ler
+consumer/provider queue içinde kısa süre bekler veya fail-fast olur. Queue büyütmek `503` oranını
+azaltabilir, fakat RSS ve p99 değerlerini de artırır.
+
 ## Provider Use Case Cookbook
 
 Bu örnekler REST consumer üzerinden çağrılır, fakat davranış provider içinde uygulanır. Bu ayrım
