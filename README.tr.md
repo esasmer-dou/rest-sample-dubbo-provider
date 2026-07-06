@@ -2,6 +2,8 @@
 
 [English](https://github.com/esasmer-dou/rest-sample-dubbo-provider/blob/master/README.md) | [Turkish](https://github.com/esasmer-dou/rest-sample-dubbo-provider/blob/master/README.tr.md)
 
+[Kısa Kullanıcı Rehberi](docs/USER_GUIDE.tr.md)
+
 Rust-Java REST consumer demosu için hazırlanmış minimal plain Java Dubbo provider örneğidir.
 
 Static provider modu veya ZooKeeper registration ile çalışır. Hazır JSON dönebilir. PostgreSQL ve HikariCP kullanabilir.
