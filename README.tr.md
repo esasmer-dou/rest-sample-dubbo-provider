@@ -2,7 +2,7 @@
 
 [English](https://github.com/esasmer-dou/rest-sample-dubbo-provider/blob/master/README.md) | [Turkish](https://github.com/esasmer-dou/rest-sample-dubbo-provider/blob/master/README.tr.md)
 
-[Kısa Kullanıcı Rehberi](docs/USER_GUIDE.tr.md)
+[Kısa Kullanıcı Rehberi](docs/USER_GUIDE.tr.md) | [PDF](docs/USER_GUIDE.tr.pdf)
 
 Rust-Java REST consumer demosu için hazırlanmış minimal plain Java Dubbo provider örneğidir.
 
