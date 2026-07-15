@@ -65,7 +65,7 @@ Use this sample when you want to understand:
 - How to keep provider dependencies explicit and limited.
 - How to return JSON bytes from a provider for low-overhead HTTP forwarding by a Rust-Java consumer.
 - How to back POST/PATCH/DELETE REST use cases with small Dubbo command methods.
-- How to add PostgreSQL access through HikariCP and ActiveJDBC without Spring.
+- How to add PostgreSQL access through HikariCP and prepared JDBC without Spring.
 - How to separate runtime classes from record DTOs.
 
 This is not a generic enterprise Dubbo provider template. It is a focused provider used to validate
@@ -139,7 +139,7 @@ small shared sample packages:
 
 - `com.reactor.sample:rest-sample-utility` for Dubbo service interfaces.
 - `com.reactor.sample:rust-sample-model` for DTO and row model records.
-- `com.reactor:java-rust-dubbo` for provider helper classes such as `DubboProviderSupport` and JDBC helpers.
+- `com.reactor:java-rust-dubbo` for `DubboProviderApplication`, layered properties, low-RSS tuning, and JDBC helpers.
 
 If these packages are private GitHub Packages, Maven needs `read:packages` credentials for
 `github-java-rust-dubbo`, `github-rest-sample-utility`, and `github-rust-sample-model`.
@@ -173,7 +173,7 @@ catalog-only static JSON demo.
 
 | Image | Build command | Exports | Intentionally absent | Local smoke evidence |
 |-------|---------------|---------|----------------------|----------------------|
-| `rest-sample-dubbo-provider:catalog-static-jlink` | `docker build -f docker/images/Dockerfile.jlink.catalog-static -t rest-sample-dubbo-provider:catalog-static-jlink .` | `CatalogJsonService#getNestedCatalogJson()` only. | PostgreSQL, HikariCP, ActiveJDBC, ZooKeeper registration, customer services, typed catalog DTO methods. | App jar about `9.3M`, JRE `80M`, RSS about `45 MiB` after idle. |
+| `rest-sample-dubbo-provider:catalog-static-jlink` | `docker build -f docker/images/Dockerfile.jlink.catalog-static -t rest-sample-dubbo-provider:catalog-static-jlink .` | `CatalogJsonService#getNestedCatalogJson()` only. | PostgreSQL, HikariCP, JDBC driver, ZooKeeper registration, customer services, typed catalog DTO methods. | App jar about `9.3M`, JRE `80M`, RSS about `45 MiB` after idle. |
 | `rest-sample-dubbo-provider:db-query-jlink` | `docker build -f docker/images/Dockerfile.jlink.db-query -t rest-sample-dubbo-provider:db-query-jlink .` | `CustomerQueryService` only, backed by PostgreSQL/HikariCP. ZooKeeper registration can be enabled or disabled. | Catalog services and `CustomerCommandService`; no POST/PATCH/DELETE Dubbo command surface. | Local smoke: query REST calls returned `200`; command REST call returned expected `503`; provider RSS about `59 MiB`. |
 | `rest-sample-dubbo-provider:jlink` | `docker build -f docker/images/Dockerfile.jlink -t rest-sample-dubbo-provider:jlink .` | Catalog, customer query, customer command interfaces. | Nothing sample-related; this is the full DB-capable provider image. | Image about `179MB`; use when DB/customer examples are needed. |
 
@@ -580,7 +580,7 @@ For memory and performance analysis, keep these scopes separate:
 
 | Component | What it should contain | What it should not contain |
 |-----------|------------------------|----------------------------|
-| Provider | Plain Java Dubbo provider, HikariCP/ActiveJDBC if DB access is needed | `rust-java-rest` runtime |
+| Provider | Plain Java Dubbo provider, HikariCP/prepared JDBC if DB access is needed | `rust-java-rest` runtime |
 | Consumer | Normal `rust-java-rest` dependency and `java-rust-dubbo` adapter | Framework `rust-java-rest-*-sample.jar` |
 | Framework sample jar | Bundled demo/benchmark routes | Provider or consumer pod sizing evidence |
 
@@ -605,24 +605,24 @@ provider DB pool is already saturated.
 
 ### Provider Hot Path Notes
 
-The provider keeps HikariCP and ActiveJDBC dependencies because this sample also shows how an
-existing database provider can be wired without Spring. That does not mean every hot query should go
-through an ActiveJDBC `Map` path.
+The provider uses HikariCP and prepared JDBC through the shared `JdbcRepository` helper. ActiveJDBC
+is intentionally absent because no current route uses it. Keeping an unused ORM on the production
+classpath would add image and class-loading surface without adding behavior.
 
 The current provider implementation uses the lighter path for benchmarked DB-backed routes:
 
 | Area | Current implementation | Why it matters |
 |------|------------------------|----------------|
-| `GET /api/v1/customers/db` provider method | Hikari `PreparedStatement` + direct `ResultSet` to `SampleCustomer` records | Avoids ActiveJDBC `Map` allocation on the hot read path. |
+| `GET /api/v1/customers/db` provider method | Hikari `PreparedStatement` + direct `ResultSet` to `SampleCustomer` records | Avoids intermediate `Map` allocation on the hot read path. |
 | `customerExists` / `getCustomerDisplayName` | Narrow SQL selecting only `1` or `full_name` | Avoids reading a full customer row for scalar REST responses. |
 | `patchCustomerSegment` / `patchCustomerStatus` SQL | Fixed prepared update statements | Avoids dynamic SQL formatting on the command hot path. |
 | Command JSON response | `StringBuilder` JSON writer | Avoids `String.formatted(...)` parser/allocation overhead per command response. |
 | Read-heavy pass-through JSON | `byte[]` UTF-8 JSON | Lets the consumer use native response handles or `RawResponse.json(bytes)` without a DTO graph. |
 
-This is still a sample provider, not a universal ORM recommendation. ActiveJDBC remains useful for
-simple examples and legacy provider code, but if a provider method is in the c64/c256 hot path, use
-explicit SQL, narrow selected columns, bounded result sizes, and aligned provider/consumer
-admission. A slow provider cannot be fixed by increasing consumer workers.
+This is still a sample provider, not a universal ORM recommendation. If an application genuinely
+uses ActiveJDBC, it can add that dependency explicitly. Hot c64/c256 methods should still use narrow
+queries, bounded result sizes, proper indexes, and aligned provider/consumer admission. A slow
+provider cannot be fixed by increasing consumer workers.
 
 ### Write Contention Rule
 
@@ -921,17 +921,27 @@ system, prefer a soft-delete/status change if audit, recovery, or downstream con
 Provider startup is intentionally small. Each application class declares only the service surface:
 
 ```java
-DubboProviderSupport support = DubboProviderSupport.fromProperties(ProviderProperties.asProperties());
+DubboApplicationProperties properties =
+        DubboApplicationProperties.load("rest-sample-dubbo-provider.properties");
+DubboProviderRuntimeTuning.applyLowRssDefaults(properties);
 
-List<DubboProviderSupport.ServicePlan<?>> services = List.of(
-    support.service(NestedCatalogService.class, catalogService),
-    support.service(CustomerQueryService.class, customerService),
-    support.service(CustomerCommandService.class, customerCommandService));
+DubboProviderApplication.builder(properties)
+    .name("full")
+    .registryEnabled(properties.getBoolean("reactor.dubbo.registry-enabled"))
+    .module(context -> {
+        PostgresCustomerRepository repository = context.manage(
+                PostgresCustomerRepository.fromProperties(properties));
+        context.service(NestedCatalogService.class, new NestedCatalogServiceImpl())
+               .service(CustomerQueryService.class, new CustomerQueryServiceImpl(repository))
+               .service(CustomerCommandService.class, new CustomerCommandServiceImpl(repository));
+    })
+    .run();
 ```
 
-`DubboProviderSupport` comes from `java-rust-dubbo`. It does the repeated work: export services, read
-interface/method concurrency limits, log startup, and close resources in the right order. To create a
-smaller provider, remove a service from this list or use the prepared Maven profiles:
+`DubboProviderApplication` comes from `java-rust-dubbo`. It exports the explicit service list, reads
+interface/method concurrency limits, registers with ZooKeeper when enabled, rolls back partial
+startup, and closes resources in reverse order. To create a smaller provider, remove a service from
+this list or use the prepared Maven profiles:
 
 | Provider shape | Service plan | Use it when |
 |----------------|--------------|-------------|
@@ -948,17 +958,19 @@ DB boilerplate follows the same rule. `PostgresCustomerRepository` extends
 `HikariDataSources.create(...)`. The library owns connection/query/lifecycle plumbing. The sample
 still owns SQL, indexes, row mapping, and write semantics.
 
+Direct JSON follows the same boundary. `CustomerQueryJsonWriter` and `CustomerCommandJsonWriter`
+extend the shared `SampleJsonWriter`. The shared utility owns UTF-8 conversion and escaping. The
+provider still owns the exact response fields. This keeps hot query/command paths allocation-aware
+without leaving JSON helper code inside business services.
+
 ## Package Structure
 
 ```text
 com.reactor.sample.dubbo.provider.app
   Process entry point and provider bootstrap.
 
-com.reactor.sample.dubbo.provider.config
-  Properties-only runtime config and Netty/Dubbo tuning keys.
-
 com.reactor.sample.dubbo.provider.db
-  HikariCP, ActiveJDBC repository, and sample DB record model.
+  HikariCP, prepared JDBC repository, and sample DB record model.
 
 com.reactor.sample.dubbo.provider.service
   Dubbo service implementation.
@@ -990,16 +1002,15 @@ The classes in this provider are not HTTP JSON DTOs:
 
 | Type | Role | JSON DTO? |
 |------|------|-----------|
-| `RestSampleDubboProviderApplication` | Process bootstrap and shutdown hook. | No |
-| `ProviderProperties` | Reads and validates runtime properties. | No |
-| `ProviderRuntimeTuning` | Applies Dubbo/Netty startup tuning. | No |
-| `DubboProviderSupport` | Reads provider properties and exports the explicit service list. | No |
-| `PlainDubboProvider` | Library class that exports Dubbo protocol and owns exporter lifecycle. | No |
-| `ZookeeperDubboProviderRegistration` | Library class that owns ZooKeeper session and ephemeral node lifecycle. | No |
-| `PostgresCustomerRepository` | Owns DB access behavior and pool usage. | No |
-| `NestedCatalogServiceImpl` | Dubbo business service implementation. | No |
-| `CustomerQueryServiceImpl` | DB-backed Dubbo business service implementation. | No |
-| `SampleCustomer` | Immutable DB row model. | Yes, record is correct. |
+| `RestSampleDubboProviderApplication` | Process bootstrap; declares resources and exported services. | Runtime class; not a JSON body type. |
+| `DubboApplicationProperties` | Reads classpath defaults and runtime overrides. | Config class; not a JSON body type. |
+| `DubboProviderRuntimeTuning` | Applies Dubbo/Netty startup tuning before provider creation. | Runtime utility; not a JSON body type. |
+| `DubboProviderApplication` | Owns export, rollback, shutdown, and resource lifecycle. | Runtime class; not a JSON body type. |
+| `PostgresCustomerRepository` | Owns explicit SQL, row mapping, and pool usage. | Repository class; not a JSON body type. |
+| `NestedCatalogServiceImpl` | Dubbo business service implementation. | Service class; may return typed records or serialized `byte[]`. |
+| `CustomerQueryServiceImpl` | DB-backed Dubbo business service implementation. | Service class; hot large responses use direct JSON `byte[]`. |
+| `CustomerCommandJsonWriter` | Writes the existing command response shape with shared escaping helpers. | Direct JSON writer; does not add a second DTO graph. |
+| `SampleCustomer` | Immutable DB row model. | Java `record`; data model, not automatically an HTTP response. |
 
 ### Use Case: DB Row Model
 
@@ -1155,7 +1166,7 @@ kept explicit:
 | `dubbo-remoting-netty4` + `netty-handler` | TCP server transport. |
 | `dubbo-serialization-hessian2` | Hessian2 payload compatibility. |
 | `zookeeper` | Provider URL registration with ephemeral nodes. |
-| `activejdbc` | Simple JDBC access without Spring. |
+| `java.sql` + `JdbcRepository` | Prepared JDBC access and lifecycle helpers without Spring or an ORM. |
 | `postgresql` | PostgreSQL JDBC driver. |
 | `HikariCP` | Bounded JDBC connection pool. |
 | `slf4j-nop` | Quiet sample runtime logging. |
@@ -1313,7 +1324,7 @@ Expected DB-backed response includes:
 ```json
 {
   "source": "rest-sample-dubbo-provider",
-  "storage": "postgresql-activejdbc-hikari",
+  "storage": "postgresql-jdbc-hikari",
   "customers": [
     {
       "customerNo": "CUST-1001",
@@ -1401,7 +1412,7 @@ Notes:
 | Static mode | Provider does not register to ZooKeeper. Consumer uses Service DNS or fixed address. |
 | ZooKeeper registration | Provider writes its Dubbo URL to ZooKeeper. |
 | HikariCP | JDBC connection pool used by DB-backed provider methods. |
-| ActiveJDBC | Lightweight DB access layer used by the sample. |
+| Prepared JDBC | Parameterized SQL through `PreparedStatement`; the sample avoids an unused ORM dependency. |
 | Method limit | Maximum concurrent calls for one provider method. |
 | Interface limit | Maximum concurrent calls for one provider interface. |
 | Bulkhead | A limit that isolates one busy method from the rest of the provider. |

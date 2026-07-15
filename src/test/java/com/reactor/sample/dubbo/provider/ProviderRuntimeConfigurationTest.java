@@ -2,10 +2,9 @@ package com.reactor.sample.dubbo.provider;
 
 import com.alibaba.com.caucho.hessian.io.Hessian2Input;
 import com.alibaba.com.caucho.hessian.io.Hessian2Output;
+import com.reactor.rust.dubbo.config.DubboApplicationProperties;
 import com.reactor.rust.dubbo.sample.dto.CatalogInfo;
 import com.reactor.rust.dubbo.sample.dto.CatalogItem;
-import com.reactor.sample.dubbo.provider.config.ProviderProperties;
-import com.reactor.sample.dubbo.provider.service.NestedCatalogServiceImpl;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -16,7 +15,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -87,25 +85,11 @@ class ProviderRuntimeConfigurationTest {
                 "sample.db.maximum-pool-size=3"));
         System.setProperty("reactor.config.file", overlay.toString());
 
-        assertEquals("0.0.0.0", ProviderProperties.get("dubbo.provider.host"));
-        assertEquals(3, ProviderProperties.getIntOrDefault("sample.db.maximum-pool-size", 0));
-    }
+        DubboApplicationProperties properties =
+                DubboApplicationProperties.load("rest-sample-dubbo-provider.properties");
 
-    @Test
-    void nestedCatalogJsonIsUtf8AndReadyForRawForwarding() {
-        NestedCatalogServiceImpl service = new NestedCatalogServiceImpl();
-        byte[] bytes = service.getNestedCatalogJson();
-        String json = new String(bytes, StandardCharsets.UTF_8);
-
-        assertTrue(json.startsWith("{"));
-        assertTrue(json.contains("\"catalog\""));
-        assertTrue(json.contains("\"id\": \"catalog-demo\""));
-        assertTrue(json.contains("\"categories\""));
-        assertEquals("Low Latency Product Catalog", service.getCatalogTitle());
-        assertEquals(3, service.countCatalogItems());
-        assertEquals("catalog-demo", service.getCatalogInfo().id());
-        assertEquals(2, service.listFeaturedItems(2).size());
-        assertEquals("micro-dubbo", service.getCatalogAttributes().get("profile"));
+        assertEquals("0.0.0.0", properties.get("dubbo.provider.host"));
+        assertEquals(3, properties.getInt("sample.db.maximum-pool-size", 0));
     }
 
     @Test

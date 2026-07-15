@@ -2,7 +2,7 @@ package com.reactor.sample.dubbo.provider.db;
 
 import com.reactor.rust.dubbo.provider.jdbc.HikariDataSources;
 import com.reactor.rust.dubbo.provider.jdbc.JdbcRepository;
-import com.reactor.sample.dubbo.provider.config.ProviderProperties;
+import com.reactor.rust.dubbo.config.DubboApplicationProperties;
 import com.reactor.sample.model.customer.CustomerCounts;
 import com.reactor.sample.model.customer.SampleCustomer;
 
@@ -61,14 +61,14 @@ public final class PostgresCustomerRepository extends JdbcRepository {
             returning id, customer_no, full_name, segment, email, status, created_at, updated_at
             """;
 
-    private PostgresCustomerRepository() {
+    private PostgresCustomerRepository(DubboApplicationProperties properties) {
         super(
-                HikariDataSources.create(ProviderProperties.asProperties(), "sample.db"),
-                ProviderProperties.getBoolean("sample.db.schema-init"));
+                HikariDataSources.create(properties.asProperties(), "sample.db"),
+                properties.getBoolean("sample.db.schema-init"));
     }
 
-    public static PostgresCustomerRepository fromProperties() {
-        return new PostgresCustomerRepository();
+    public static PostgresCustomerRepository fromProperties(DubboApplicationProperties properties) {
+        return new PostgresCustomerRepository(properties);
     }
 
     public List<SampleCustomer> findCustomers() {
@@ -167,6 +167,8 @@ public final class PostgresCustomerRepository extends JdbcRepository {
             statement.executeUpdate("alter table sample_customers add column if not exists email varchar(160) not null default ''");
             statement.executeUpdate("alter table sample_customers add column if not exists status varchar(32) not null default 'active'");
             statement.executeUpdate("alter table sample_customers add column if not exists updated_at timestamptz not null default now()");
+            statement.executeUpdate("create index if not exists idx_sample_customers_segment_id on sample_customers (segment, id)");
+            statement.executeUpdate("create index if not exists idx_sample_customers_status on sample_customers (status)");
             statement.executeUpdate("""
                         insert into sample_customers (customer_no, full_name, segment, email, status)
                         values

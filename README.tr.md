@@ -67,7 +67,7 @@ Bu örnek şu konuları göstermek için hazırlandı:
 - Provider dependency seti nasıl açık ve sınırlı tutulur.
 - Rust-Java consumer'ın düşük overhead ile forward edebilmesi için provider nasıl JSON bytes döner.
 - POST/PATCH/DELETE REST use case'leri küçük Dubbo command method'larıyla nasıl desteklenir.
-- Spring olmadan PostgreSQL'e HikariCP ve ActiveJDBC ile nasıl bağlanılır.
+- Spring olmadan PostgreSQL'e HikariCP ve prepared JDBC ile nasıl bağlanılır.
 - Runtime class'lar ile record DTO'lar nasıl ayrılır.
 
 Bu repo genel amaçlı enterprise Dubbo provider template'i değildir. Rust-Java REST Dubbo consumer
@@ -141,7 +141,7 @@ paketlerini kullanır:
 
 - `com.reactor.sample:rest-sample-utility`: Dubbo service interface'leri.
 - `com.reactor.sample:rust-sample-model`: DTO ve row model record'ları.
-- `com.reactor:java-rust-dubbo`: `DubboProviderSupport` ve JDBC helper sınıfları.
+- `com.reactor:java-rust-dubbo`: `DubboProviderApplication`, katmanlı property okuma, düşük RSS ayarları ve JDBC yardımcıları.
 
 Bu paketler private GitHub Packages olarak yayınlanıyorsa Maven tarafında `github-java-rust-dubbo`,
 `github-rest-sample-utility` ve `github-rust-sample-model` için `read:packages` credential gerekir.
@@ -174,7 +174,7 @@ DB/ZooKeeper destekli full image taşımayın.
 
 | Image | Build komutu | Export eder | Bilinçli dışarıda kalır | Local smoke kanıtı |
 |-------|--------------|-------------|-------------------------|--------------------|
-| `rest-sample-dubbo-provider:catalog-static-jlink` | `docker build -f docker/images/Dockerfile.jlink.catalog-static -t rest-sample-dubbo-provider:catalog-static-jlink .` | Sadece `CatalogJsonService#getNestedCatalogJson()`. | PostgreSQL, HikariCP, ActiveJDBC, ZooKeeper registration, customer servisleri, typed catalog DTO method'ları. | App jar yaklaşık `9.3M`, JRE `80M`, idle RSS yaklaşık `45 MiB`. |
+| `rest-sample-dubbo-provider:catalog-static-jlink` | `docker build -f docker/images/Dockerfile.jlink.catalog-static -t rest-sample-dubbo-provider:catalog-static-jlink .` | Sadece `CatalogJsonService#getNestedCatalogJson()`. | PostgreSQL, HikariCP, JDBC driver, ZooKeeper registration, customer servisleri, typed catalog DTO method'ları. | App jar yaklaşık `9.3M`, JRE `80M`, idle RSS yaklaşık `45 MiB`. |
 | `rest-sample-dubbo-provider:db-query-jlink` | `docker build -f docker/images/Dockerfile.jlink.db-query -t rest-sample-dubbo-provider:db-query-jlink .` | Sadece PostgreSQL/HikariCP destekli `CustomerQueryService`. ZooKeeper kaydı açılıp kapatılabilir. | Catalog servisleri ve `CustomerCommandService`; POST/PATCH/DELETE Dubbo command yüzeyi yoktur. | Local smoke: query REST çağrıları `200`, command REST çağrısı beklenen `503`; provider RSS yaklaşık `59 MiB`. |
 | `rest-sample-dubbo-provider:jlink` | `docker build -f docker/images/Dockerfile.jlink -t rest-sample-dubbo-provider:jlink .` | Catalog, customer query ve customer command interface'leri. | Sample kapsamındaki özelliklerin tamamını taşır; DB-capable full provider image'dır. | Image yaklaşık `179MB`; DB/customer örnekleri gerekiyorsa kullanın. |
 
@@ -585,7 +585,7 @@ Memory ve performance analizi yaparken scope'ları ayrı tutun:
 
 | Component | Ne içermeli? | Ne içermemeli? |
 |-----------|--------------|----------------|
-| Provider | Plain Java Dubbo provider, gerekiyorsa HikariCP/ActiveJDBC | `rust-java-rest` runtime |
+| Provider | Plain Java Dubbo provider, gerekiyorsa HikariCP/prepared JDBC | `rust-java-rest` runtime |
 | Consumer | Normal `rust-java-rest` dependency ve `java-rust-dubbo` adapter | Framework `rust-java-rest-*-sample.jar` |
 | Framework sample jar | Bundled demo/benchmark route'ları | Provider veya consumer pod sizing kanıtı |
 
@@ -610,24 +610,24 @@ consumer worker sayısını artırmak.
 
 ### Provider Hot Path Notları
 
-Provider HikariCP ve ActiveJDBC dependency'lerini korur; çünkü bu sample Spring olmadan mevcut bir
-database provider'ın nasıl bağlanacağını da gösterir. Fakat bu, hot query'lerin tamamı ActiveJDBC
-`Map` path'i üzerinden geçmeli demek değildir.
+Provider, ortak `JdbcRepository` helper'ı üzerinden HikariCP ve prepared JDBC kullanır. Güncel
+route'ların hiçbiri ActiveJDBC kullanmadığı için bu dependency bilinçli olarak çıkarılmıştır.
+Kullanılmayan bir ORM'yi production classpath'te tutmak image ve class-loading yüzeyini büyütür.
 
 Güncel provider benchmark edilen DB-backed route'larda daha hafif yolu kullanır:
 
 | Alan | Güncel implementasyon | Neden önemli? |
 |------|-----------------------|---------------|
-| `GET /api/v1/customers/db` provider method'u | Hikari `PreparedStatement` + direkt `ResultSet` -> `SampleCustomer` record | Hot read path'te ActiveJDBC `Map` allocation'ı oluşmaz. |
+| `GET /api/v1/customers/db` provider method'u | Hikari `PreparedStatement` + direkt `ResultSet` -> `SampleCustomer` record | Hot read path'te ara `Map` allocation'ı oluşmaz. |
 | `customerExists` / `getCustomerDisplayName` | Sadece `1` veya `full_name` okuyan dar SQL | Scalar REST response için full customer row okunmaz. |
 | `patchCustomerSegment` / `patchCustomerStatus` SQL | Sabit prepared update statement | Command hot path'te dynamic SQL formatlama yoktur. |
 | Command JSON response | `StringBuilder` JSON writer | Her command response'ta `String.formatted(...)` parser/allocation maliyeti oluşmaz. |
 | Read-heavy pass-through JSON | UTF-8 `byte[]` JSON | Consumer native response handle veya `RawResponse.json(bytes)` ile DTO graph kurmadan dönebilir. |
 
-Bu hâlâ bir sample provider'dır; genel ORM tercihi dikte etmez. ActiveJDBC basit örnekler ve legacy
-provider kodu için faydalı olabilir. Ancak bir provider method'u c64/c256 hot path'teyse explicit SQL,
-dar kolon seçimi, bounded result size ve provider/consumer admission hizalaması gerekir. Yavaş
-provider, consumer worker artırarak düzelmez.
+Bu hâlâ bir sample provider'dır; genel ORM tercihi dikte etmez. Uygulama ActiveJDBC'yi gerçekten
+kullanıyorsa dependency'yi açıkça ekleyebilir. Ancak c64/c256 hot path içindeki method'larda dar SQL,
+sınırlı sonuç boyutu, doğru index ve provider/consumer admission hizalaması gerekir. Yavaş provider,
+consumer worker artırarak düzelmez.
 
 ### Write Contention Kuralı
 
@@ -927,18 +927,27 @@ Provider startup kodu bilinçli olarak küçük tutulur. Her application class s
 yüzeyini söyler:
 
 ```java
-DubboProviderSupport support = DubboProviderSupport.fromProperties(ProviderProperties.asProperties());
+DubboApplicationProperties properties =
+        DubboApplicationProperties.load("rest-sample-dubbo-provider.properties");
+DubboProviderRuntimeTuning.applyLowRssDefaults(properties);
 
-List<DubboProviderSupport.ServicePlan<?>> services = List.of(
-    support.service(NestedCatalogService.class, catalogService),
-    support.service(CustomerQueryService.class, customerService),
-    support.service(CustomerCommandService.class, customerCommandService));
+DubboProviderApplication.builder(properties)
+    .name("full")
+    .registryEnabled(properties.getBoolean("reactor.dubbo.registry-enabled"))
+    .module(context -> {
+        PostgresCustomerRepository repository = context.manage(
+                PostgresCustomerRepository.fromProperties(properties));
+        context.service(NestedCatalogService.class, new NestedCatalogServiceImpl())
+               .service(CustomerQueryService.class, new CustomerQueryServiceImpl(repository))
+               .service(CustomerCommandService.class, new CustomerCommandServiceImpl(repository));
+    })
+    .run();
 ```
 
-`DubboProviderSupport`, `java-rust-dubbo` içinden gelir. Tekrar eden işleri yapar: servis export
-eder, interface/method concurrency limitlerini property'den okur, startup loglarını basar ve kapanışta
-kaynakları doğru sırayla kapatır. Daha küçük provider istiyorsanız bu listeden servis çıkarın veya
-hazır Maven profile'larından birini kullanın:
+`DubboProviderApplication`, `java-rust-dubbo` içinden gelir. Açıkça verilen servis listesini export
+eder. Interface ve metot limitlerini okur. ZooKeeper açıksa kaydı yapar. Başlangıç yarıda kalırsa
+açılmış kaynakları geri kapatır. Normal kapanışta kaynakları ters sırada kapatır. Daha küçük provider
+istiyorsanız listeden servis çıkarın veya hazır Maven profile'larından birini kullanın:
 
 | Provider şekli | Servis planı | Ne zaman kullanılır? |
 |----------------|--------------|----------------------|
@@ -955,17 +964,19 @@ DB boilerplate için de aynı kural geçerlidir. `PostgresCustomerRepository`,
 `HikariDataSources.create(...)` ile yapılır. Library connection, query ve lifecycle tesisatını
 üstlenir. SQL, index, row mapping ve write semantics kararı sample içinde açık kalır.
 
+Direct JSON tarafında da aynı sınır kullanılır. `CustomerQueryJsonWriter` ve
+`CustomerCommandJsonWriter`, ortak `SampleJsonWriter` sınıfından miras alır. Ortak utility UTF-8
+dönüşümünü ve escaping işlemini yönetir. Response alanları provider kodunda açık kalır. Böylece sıcak
+query ve command yolları düşük allocation ile çalışır; JSON helper kodu business service içine dağılmaz.
+
 ## Paket Yapısı
 
 ```text
 com.reactor.sample.dubbo.provider.app
   Process entry point ve provider bootstrap.
 
-com.reactor.sample.dubbo.provider.config
-  Properties-only runtime config ve Netty/Dubbo tuning key'leri.
-
 com.reactor.sample.dubbo.provider.db
-  HikariCP, ActiveJDBC repository ve sample DB record modeli.
+  HikariCP, prepared JDBC repository ve sample DB record modeli.
 
 com.reactor.sample.dubbo.provider.service
   Dubbo service implementasyonu.
@@ -997,16 +1008,15 @@ Bu provider'daki class'lar HTTP JSON DTO değildir:
 
 | Tip | Rol | JSON DTO mu? |
 |-----|-----|--------------|
-| `RestSampleDubboProviderApplication` | Process bootstrap ve shutdown hook. | Hayır |
-| `ProviderProperties` | Runtime property okur ve validate eder. | Hayır |
-| `ProviderRuntimeTuning` | Dubbo/Netty startup tuning uygular. | Hayır |
-| `DubboProviderSupport` | Provider property'lerini okur ve explicit servis listesini export eder. | Hayır |
-| `PlainDubboProvider` | Dubbo protocol export ve exporter lifecycle yöneten library sınıfıdır. | Hayır |
-| `ZookeeperDubboProviderRegistration` | ZooKeeper session ve ephemeral node lifecycle yöneten library sınıfıdır. | Hayır |
-| `PostgresCustomerRepository` | DB access davranışı ve pool kullanımını yönetir. | Hayır |
-| `NestedCatalogServiceImpl` | Dubbo business service implementasyonu. | Hayır |
-| `CustomerQueryServiceImpl` | DB-backed Dubbo business service implementasyonu. | Hayır |
-| `SampleCustomer` | Immutable DB row modeli. | Evet, record doğru tercih. |
+| `RestSampleDubboProviderApplication` | Process başlangıcıdır; kaynakları ve export edilecek servisleri tanımlar. | Runtime class'tır; JSON body tipi değildir. |
+| `DubboApplicationProperties` | Classpath varsayılanlarını ve runtime override değerlerini okur. | Config class'tır; JSON body tipi değildir. |
+| `DubboProviderRuntimeTuning` | Provider kurulmadan önce Dubbo/Netty ayarlarını uygular. | Runtime yardımcı sınıfıdır; JSON body tipi değildir. |
+| `DubboProviderApplication` | Export, rollback, shutdown ve kaynak yaşam döngüsünü yönetir. | Runtime class'tır; JSON body tipi değildir. |
+| `PostgresCustomerRepository` | Açık SQL, row mapping ve pool kullanımını yönetir. | Repository class'tır; JSON body tipi değildir. |
+| `NestedCatalogServiceImpl` | Dubbo business servisidir. | Typed record veya hazır `byte[]` döndürebilir. |
+| `CustomerQueryServiceImpl` | Veritabanı kullanan Dubbo business servisidir. | Büyük ve sıcak yanıtlarda doğrudan JSON `byte[]` üretir. |
+| `CustomerCommandJsonWriter` | Command response şeklini ortak escaping yardımcılarıyla üretir. | Direct JSON writer'dır; ikinci bir DTO graph oluşturmaz. |
+| `SampleCustomer` | Immutable veritabanı satır modelidir. | Java `record` tipidir; otomatik olarak HTTP response değildir. |
 
 ### Use Case: DB Row Model
 
@@ -1163,7 +1173,7 @@ tutulmuştur:
 | `dubbo-remoting-netty4` + `netty-handler` | TCP server transport. |
 | `dubbo-serialization-hessian2` | Hessian2 payload uyumluluğu. |
 | `zookeeper` | Provider URL registration ve ephemeral node. |
-| `activejdbc` | Spring olmadan basit JDBC access. |
+| `java.sql` + `JdbcRepository` | Spring veya ORM olmadan prepared JDBC erişimi ve lifecycle helper'ları. |
 | `postgresql` | PostgreSQL JDBC driver. |
 | `HikariCP` | Bounded JDBC connection pool. |
 | `slf4j-nop` | Sample runtime'da sessiz logging. |
@@ -1322,7 +1332,7 @@ Beklenen DB-backed response içinde şunlar bulunur:
 ```json
 {
   "source": "rest-sample-dubbo-provider",
-  "storage": "postgresql-activejdbc-hikari",
+  "storage": "postgresql-jdbc-hikari",
   "customers": [
     {
       "customerNo": "CUST-1001",
@@ -1410,7 +1420,7 @@ Notlar:
 | Static mod | Provider ZooKeeper'a kayıt olmaz. Consumer Service DNS veya sabit adres kullanır. |
 | ZooKeeper registration | Provider'ın Dubbo URL bilgisini ZooKeeper'a yazmasıdır. |
 | HikariCP | DB-backed method'lar için kullanılan JDBC connection pool'dur. |
-| ActiveJDBC | Sample içinde kullanılan hafif DB erişim katmanıdır. |
+| Prepared JDBC | `PreparedStatement` kullanan parametreli SQL yoludur. Sample, kullanılmayan ORM dependency'sini taşımaz. |
 | Method limiti | Tek provider method'u için eşzamanlı çağrı üst sınırıdır. |
 | Interface limiti | Tek provider interface'i için eşzamanlı çağrı üst sınırıdır. |
 | Bulkhead | Yoğun bir method'un diğer işleri bozmasını engelleyen limittir. |
