@@ -921,27 +921,18 @@ system, prefer a soft-delete/status change if audit, recovery, or downstream con
 Provider startup is intentionally small. Each application class declares only the service surface:
 
 ```java
-DubboApplicationProperties properties =
-        DubboApplicationProperties.load("rest-sample-dubbo-provider.properties");
-DubboProviderRuntimeTuning.applyLowRssDefaults(properties);
-
-DubboProviderApplication.builder(properties)
-    .name("full")
-    .registryEnabled(properties.getBoolean("reactor.dubbo.registry-enabled"))
-    .module(context -> {
-        PostgresCustomerRepository repository = context.manage(
-                PostgresCustomerRepository.fromProperties(properties));
-        context.service(NestedCatalogService.class, new NestedCatalogServiceImpl())
-               .service(CustomerQueryService.class, new CustomerQueryServiceImpl(repository))
-               .service(CustomerCommandService.class, new CustomerCommandServiceImpl(repository));
-    })
-    .run();
+public static void main(String[] args) throws Exception {
+    DubboProviderApplication.run(
+            "rest-sample-dubbo-provider.properties",
+            "full",
+            FullProviderModule.INSTANCE);
+}
 ```
 
 `DubboProviderApplication` comes from `java-rust-dubbo`. It exports the explicit service list, reads
 interface/method concurrency limits, registers with ZooKeeper when enabled, rolls back partial
-startup, and closes resources in reverse order. To create a smaller provider, remove a service from
-this list or use the prepared Maven profiles:
+startup, and closes resources in reverse order. `FullProviderModule` contains the repository and
+explicit service list. To create a smaller provider, use a narrower module or the prepared Maven profiles:
 
 | Provider shape | Service plan | Use it when |
 |----------------|--------------|-------------|

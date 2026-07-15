@@ -927,27 +927,19 @@ Provider startup kodu bilinçli olarak küçük tutulur. Her application class s
 yüzeyini söyler:
 
 ```java
-DubboApplicationProperties properties =
-        DubboApplicationProperties.load("rest-sample-dubbo-provider.properties");
-DubboProviderRuntimeTuning.applyLowRssDefaults(properties);
-
-DubboProviderApplication.builder(properties)
-    .name("full")
-    .registryEnabled(properties.getBoolean("reactor.dubbo.registry-enabled"))
-    .module(context -> {
-        PostgresCustomerRepository repository = context.manage(
-                PostgresCustomerRepository.fromProperties(properties));
-        context.service(NestedCatalogService.class, new NestedCatalogServiceImpl())
-               .service(CustomerQueryService.class, new CustomerQueryServiceImpl(repository))
-               .service(CustomerCommandService.class, new CustomerCommandServiceImpl(repository));
-    })
-    .run();
+public static void main(String[] args) throws Exception {
+    DubboProviderApplication.run(
+            "rest-sample-dubbo-provider.properties",
+            "full",
+            FullProviderModule.INSTANCE);
+}
 ```
 
 `DubboProviderApplication`, `java-rust-dubbo` içinden gelir. Açıkça verilen servis listesini export
 eder. Interface ve metot limitlerini okur. ZooKeeper açıksa kaydı yapar. Başlangıç yarıda kalırsa
-açılmış kaynakları geri kapatır. Normal kapanışta kaynakları ters sırada kapatır. Daha küçük provider
-istiyorsanız listeden servis çıkarın veya hazır Maven profile'larından birini kullanın:
+açılmış kaynakları geri kapatır. Normal kapanışta kaynakları ters sırada kapatır. Repository ve açık
+servis listesi `FullProviderModule` içinde kalır. Daha küçük provider için dar bir module veya hazır
+Maven profile'larından birini kullanın:
 
 | Provider şekli | Servis planı | Ne zaman kullanılır? |
 |----------------|--------------|----------------------|
