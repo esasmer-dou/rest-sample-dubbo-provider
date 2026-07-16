@@ -6,7 +6,7 @@
 
     <groupId>com.reactor.sample</groupId>
     <artifactId>rest-sample-dubbo-provider</artifactId>
-    <version>0.2.1</version>
+    <version>0.3.0</version>
     <packaging>jar</packaging>
 
     <name>rest-sample-dubbo-provider</name>
@@ -23,7 +23,7 @@
         <hikaricp.version>5.1.0</hikaricp.version>
         <log4j.version>2.19.0</log4j.version>
         <junit.version>5.10.2</junit.version>
-        <java-rust-dubbo.version>0.3.1</java-rust-dubbo.version>
+        <java-rust-dubbo.version>0.4.0</java-rust-dubbo.version>
         <rest-sample-utility.version>0.2.0</rest-sample-utility.version>
         <provider.mainClass>com.reactor.sample.dubbo.provider.app.RestSampleDubboProviderApplication</provider.mainClass>
     </properties>

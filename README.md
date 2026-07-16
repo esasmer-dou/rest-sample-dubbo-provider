@@ -8,9 +8,14 @@ It can run with static provider mode or ZooKeeper registration. It can return re
 
 It does not use Spring Boot.
 
-Shared Dubbo service interfaces come from `com.reactor.sample:rest-sample-utility:0.1.0`. Shared DTO and
-row model records come from `com.reactor.sample:rust-sample-model:0.1.0`. The service interface package
+This release uses `java-rust-dubbo:0.4.0`. Provider service interfaces and payload contracts remain
+unchanged, so it can be used directly with `rest-sample-dubbo-consumer:0.3.0`.
+
+Shared Dubbo service interfaces come from `com.reactor.sample:rest-sample-utility:0.2.0`. Shared DTO and
+row model records come from `com.reactor.sample:rust-sample-model:0.2.0`. The service interface package
 name remains `com.reactor.rust.dubbo.sample` to keep Dubbo registry paths stable.
+
+[Release notes for v0.3.0](docs/RELEASE_NOTES_v0.3.0.md)
 
 ## Contents
 

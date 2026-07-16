@@ -10,9 +10,14 @@ Static provider modu veya ZooKeeper registration ile çalışır. Hazır JSON d�
 
 Spring Boot kullanmaz.
 
-Ortak Dubbo service interface'leri `com.reactor.sample:rest-sample-utility:0.1.0` paketinden gelir. Ortak
-DTO ve row model record'ları `com.reactor.sample:rust-sample-model:0.1.0` paketinden gelir. Dubbo registry
+Bu sürüm `java-rust-dubbo:0.4.0` kullanır. Provider service interface ve payload sözleşmeleri
+değişmedi. `rest-sample-dubbo-consumer:0.3.0` ile doğrudan birlikte çalışır.
+
+Ortak Dubbo service interface'leri `com.reactor.sample:rest-sample-utility:0.2.0` paketinden gelir. Ortak
+DTO ve row model record'ları `com.reactor.sample:rust-sample-model:0.2.0` paketinden gelir. Dubbo registry
 path'leri bozulmasın diye service interface package adı `com.reactor.rust.dubbo.sample` olarak korunur.
+
+[v0.3.0 sürüm notları](docs/RELEASE_NOTES_v0.3.0.md)
 
 ## İçindekiler
 
