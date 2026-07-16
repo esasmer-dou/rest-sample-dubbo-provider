@@ -101,9 +101,24 @@ Command provider:
 ```properties
 sample.db.maximum-pool-size=2
 dubbo.provider.service.CustomerCommandService.max-concurrent=2
-dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent=1
+dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent=2
 dubbo.provider.service.CustomerCommandService.method.patchCustomerSegment.max-concurrent=1
 ```
+
+Provider executor için başlangıç ayarı:
+
+```properties
+dubbo.provider.executor.thread-pool=eager
+dubbo.provider.executor.core-threads=1
+dubbo.provider.executor.max-threads=8
+dubbo.provider.executor.queue-capacity=16
+dubbo.provider.executor.idle-timeout-ms=30000
+dubbo.provider.executor.io-threads=1
+```
+
+Bu sınır, Dubbo handler thread sayısının yük altında yüzlerce thread'e çıkmasını önler. Create
+işlemleri bağımsız customer key'lerinde Hikari `2` kapasitesini kullanabilir. Patch/delete gibi aynı
+satırda yarışabilecek işlemler `1` olarak kalır.
 
 ZooKeeper registration:
 
@@ -140,7 +155,8 @@ Provider limitleri Hikari kapasitesiyle uyumlu olmalıdır.
 | Query service | `dubbo.provider.service.CustomerQueryService.max-concurrent` | Hikari pool size veya daha düşük. |
 | DB list method | `dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent` | DB yavaşsa `1-2`. |
 | Command service | `dubbo.provider.service.CustomerCommandService.max-concurrent` | Hikari pool size veya daha düşük. |
-| Command method | `dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent` | Aynı key/write contention varsa `1`. |
+| Create command | `dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent` | Bağımsız key'ler için Hikari `2` ile `2`. |
+| Patch/delete command | İlgili `method.<name>.max-concurrent` property | Aynı satırda yarışma varsa `1`. |
 
 Client tarafında `c64` yük gelmesi Hikari'nin 64 connection açacağı anlamına gelmez.
 

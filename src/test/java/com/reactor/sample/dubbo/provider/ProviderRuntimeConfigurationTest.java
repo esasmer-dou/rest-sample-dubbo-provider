@@ -60,8 +60,26 @@ class ProviderRuntimeConfigurationTest {
                 "Write method override should be equal to or smaller than command service concurrency");
         assertTrue(createTypedCommandLimit <= customerCommandLimit,
                 "Typed write method override should be equal to or smaller than command service concurrency");
+        assertEquals(2, createCommandLimit);
+        assertEquals(2, createTypedCommandLimit);
         assertEquals("0", properties.getProperty("sample.db.minimum-idle"));
         assertEquals("3000", properties.getProperty("sample.db.connection-timeout-ms"));
+    }
+
+    @Test
+    void minimumImageKeepsDbServicesBoundedWithoutAdvancedOverlay() throws IOException {
+        Properties properties = loadProperties("rest-sample-dubbo-provider.properties");
+
+        assertEquals("2", properties.getProperty(
+                "dubbo.provider.service.CustomerQueryService.max-concurrent"));
+        assertEquals("2", properties.getProperty(
+                "dubbo.provider.service.CustomerCommandService.max-concurrent"));
+        assertEquals("2", properties.getProperty(
+                "dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent"));
+        assertEquals("2", properties.getProperty(
+                "dubbo.provider.service.CustomerCommandService.method.createCustomerTyped.max-concurrent"));
+        assertEquals("1", properties.getProperty(
+                "dubbo.provider.service.CustomerCommandService.method.patchCustomerStatus.max-concurrent"));
     }
 
     @Test
@@ -75,6 +93,14 @@ class ProviderRuntimeConfigurationTest {
         assertEquals("false", properties.getProperty("dubbo.application.qos.enable"));
         assertEquals("false", properties.getProperty("dubbo.metrics.enable"));
         assertEquals("false", properties.getProperty("dubbo.tracing.enabled"));
+
+        Properties base = loadProperties("rest-sample-dubbo-provider.properties");
+        assertEquals("eager", base.getProperty("dubbo.provider.executor.thread-pool"));
+        assertEquals("1", base.getProperty("dubbo.provider.executor.core-threads"));
+        assertEquals("8", base.getProperty("dubbo.provider.executor.max-threads"));
+        assertEquals("16", base.getProperty("dubbo.provider.executor.queue-capacity"));
+        assertEquals("30000", base.getProperty("dubbo.provider.executor.idle-timeout-ms"));
+        assertEquals("1", base.getProperty("dubbo.provider.executor.io-threads"));
     }
 
     @Test

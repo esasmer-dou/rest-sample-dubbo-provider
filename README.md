@@ -8,14 +8,14 @@ It can run with static provider mode or ZooKeeper registration. It can return re
 
 It does not use Spring Boot.
 
-This release uses `java-rust-dubbo:0.4.0`. Provider service interfaces and payload contracts remain
-unchanged, so it can be used directly with `rest-sample-dubbo-consumer:0.3.0`.
+This release uses `java-rust-dubbo:0.4.1`. Provider service interfaces and payload contracts remain
+unchanged, so it can be used directly with `rest-sample-dubbo-consumer:0.3.1`.
 
 Shared Dubbo service interfaces come from `com.reactor.sample:rest-sample-utility:0.2.0`. Shared DTO and
 row model records come from `com.reactor.sample:rust-sample-model:0.2.0`. The service interface package
 name remains `com.reactor.rust.dubbo.sample` to keep Dubbo registry paths stable.
 
-[Release notes for v0.3.0](docs/RELEASE_NOTES_v0.3.0.md)
+[Release notes for v0.3.1](docs/RELEASE_NOTES_v0.3.1.md)
 
 ## Contents
 
@@ -160,8 +160,8 @@ registration, HikariCP pool size, and per-interface/per-method concurrency limit
 | Read-heavy lookup/catalog | Small read interface<br>returns UTF-8 JSON `byte[]` | <small><code>dubbo.provider.service.NestedCatalogService.max-concurrent=16</code></small> | Native handle: `RawResponse.nativeResponse(...)`<br>Java bytes: `RawResponse.json(bytes)`<br>no DTO graph |
 | Typed lookup/small page | `record`, `String`, primitive,<br>`List<record>`, `Map<String,String>` | <small><code>dubbo.provider.service.NestedCatalogService.method.&lt;method&gt;.max-concurrent=4-16</code><br>strict result limit</small> | Typed business decisions<br>Hessian/object allocation |
 | DB-backed query | `CustomerQueryService`<br>small DB pool | <small><code>sample.db.maximum-pool-size=2</code><br><code>dubbo.provider.service.CustomerQueryService.max-concurrent=1-2</code></small> | p99 bounded by DB capacity |
-| Write command | Compact JSON command bytes | <small><code>dubbo.provider.service.CustomerCommandService.method.&lt;method&gt;.max-concurrent=1</code><br><code>sample.db.auto-commit=true</code></small> | Retries off, fail-fast on saturation |
-| Typed command | `CreateCustomerCommand -> CustomerMutationResult` | <small><code>dubbo.provider.service.CustomerCommandService.method.createCustomerTyped.max-concurrent=1</code><br>aligned with Hikari</small> | Cleaner contract<br>costlier than byte pass-through |
+| Write command | Compact JSON command bytes | <small><code>CustomerCommandService.max-concurrent=2</code><br>create `2`, same-row mutation `1`</small> | Uses both Hikari connections without allowing hot-row fan-out |
+| Typed command | `CreateCustomerCommand -> CustomerMutationResult` | <small><code>dubbo.provider.service.CustomerCommandService.method.createCustomerTyped.max-concurrent=2</code><br>aligned with Hikari</small> | Cleaner contract<br>costlier than byte pass-through |
 | Kubernetes discovery | Register every interface in ZooKeeper | <small><code>reactor.dubbo.registry-enabled=true</code><br><code>reactor.dubbo.registry-address=zookeeper://...:2181</code></small> | `zookeeper-discovery` can reconnect |
 | Static Service DNS | No ZooKeeper registration; provider only exposes `dubbo://` | <small><code>reactor.dubbo.registry-enabled=false</code><br><code>dubbo.provider.bind-host=0.0.0.0</code></small> | Consumer uses `reactor.dubbo.providers=service-name:20880` |
 | Local/static test | Bind `127.0.0.1:20880` or container DNS | `dubbo.provider.host`<br>`bind-host`, `port` | Static provider list points here |
@@ -381,8 +381,8 @@ Use this when POST/PATCH/DELETE requests are translated into provider command me
 
 ```properties
 dubbo.provider.service.CustomerCommandService.max-concurrent=2
-dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent=1
-dubbo.provider.service.CustomerCommandService.method.createCustomerTyped.max-concurrent=1
+dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent=2
+dubbo.provider.service.CustomerCommandService.method.createCustomerTyped.max-concurrent=2
 dubbo.provider.service.CustomerCommandService.method.patchCustomerSegment.max-concurrent=1
 dubbo.provider.service.CustomerCommandService.method.patchCustomerStatus.max-concurrent=1
 dubbo.provider.service.CustomerCommandService.method.patchCustomerStatusTyped.max-concurrent=1
@@ -455,7 +455,7 @@ Use this when one provider process exposes both cheap reads and DB/write operati
 dubbo.provider.service.NestedCatalogService.max-concurrent=32
 dubbo.provider.service.CustomerQueryService.max-concurrent=2
 dubbo.provider.service.CustomerCommandService.max-concurrent=2
-dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent=1
+dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent=2
 ```
 
 Effect: a busy DB/write method does not consume the whole provider execution budget for cheap read
@@ -757,6 +757,26 @@ put unrelated read/write operations into one god interface because it is easier 
 The provider uses one ZooKeeper session to register all interface nodes. Opening one ZooKeeper
 client per exported interface would work, but it is unnecessary thread/session overhead.
 
+## Bounded Dubbo/Netty Executor
+
+The provider does not use Dubbo's default `200` request-handler threads. The sample puts one bounded
+executor in front of all exported interfaces:
+
+```properties
+dubbo.provider.executor.thread-pool=eager
+dubbo.provider.executor.core-threads=1
+dubbo.provider.executor.max-threads=8
+dubbo.provider.executor.queue-capacity=16
+dubbo.provider.executor.idle-timeout-ms=30000
+dubbo.provider.executor.io-threads=1
+```
+
+`eager` grows only when work arrives and shrinks back after the idle timeout. `max-threads=8` bounds
+thread-stack and executor memory. `queue-capacity=16` absorbs short bursts without creating an
+unbounded latency queue. Keep the executor wider than the Hikari `2` service gate because catalog
+and DB interfaces share the same Dubbo port, but do not raise it without checking provider RSS,
+thread count, p99, and rejection rate together.
+
 ## Per-Interface and Per-Method Execution Limits
 
 Each exported Dubbo interface has its own execution bulkhead, and individual methods can override
@@ -791,7 +811,8 @@ Default sample limits:
 | `getDatabaseCustomersJson` | `dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent` | `1` | DB-backed method override |
 | Typed DB methods | `dubbo.provider.service.CustomerQueryService.method.<method>.max-concurrent` | `1-2` | Record/list/stats aligned with Hikari |
 | `CustomerCommandService` | `dubbo.provider.service.CustomerCommandService.max-concurrent` | `2` | Write-side DB concurrency aligned with Hikari |
-| Write methods | `dubbo.provider.service.CustomerCommandService.method.<method>.max-concurrent` | `1` | Predictable local sample writes |
+| Create methods | `dubbo.provider.service.CustomerCommandService.method.createCustomer*.max-concurrent` | `2` | Uses both Hikari connections for independent customer keys |
+| Patch/delete methods | `dubbo.provider.service.CustomerCommandService.method.<method>.max-concurrent` | `1` | Bounds same-row lock and mutation pressure |
 
 You can also use the fully qualified interface name if simple names collide:
 
@@ -845,7 +866,7 @@ mutation rules, and Hikari capacity.
 |----------|--------------------|------------|------:|
 | Read static/nested catalog | `NestedCatalogService` | CPU/string generation | `16` |
 | Read customers from PostgreSQL | `CustomerQueryService` | Hikari/PostgreSQL | <small><code>dubbo.provider.service.CustomerQueryService.max-concurrent=2</code><br><code>dubbo.provider.service.CustomerQueryService.method.getDatabaseCustomersJson.max-concurrent=1</code></small> |
-| Create/upsert customer | `CustomerCommandService.createCustomer` | Hikari/PostgreSQL unique key | <small><code>dubbo.provider.service.CustomerCommandService.max-concurrent=2</code><br><code>dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent=1</code></small> |
+| Create/upsert customer | `CustomerCommandService.createCustomer` | Hikari/PostgreSQL unique key | <small><code>dubbo.provider.service.CustomerCommandService.max-concurrent=2</code><br><code>dubbo.provider.service.CustomerCommandService.method.createCustomer.max-concurrent=2</code></small> |
 | Patch segment/status | `CustomerCommandService.patchCustomer*` | Hikari/PostgreSQL update | <small><code>dubbo.provider.service.CustomerCommandService.max-concurrent=2</code><br><code>dubbo.provider.service.CustomerCommandService.method.patchCustomerStatus.max-concurrent=1</code></small> |
 | Delete customer | `CustomerCommandService.deleteCustomer` | Hikari/PostgreSQL delete/audit | <small><code>dubbo.provider.service.CustomerCommandService.max-concurrent=2</code><br><code>dubbo.provider.service.CustomerCommandService.method.deleteCustomer.max-concurrent=1</code></small> |
 
@@ -1218,6 +1239,12 @@ Important properties:
 | `dubbo.provider.host` | Advertises the provider host in the Dubbo URL. | Set to pod IP, node IP, or service-reachable host. |
 | `dubbo.provider.bind-host` | Chooses the local bind host. | Use `0.0.0.0` in containers if needed. |
 | `dubbo.provider.port` | Opens the Dubbo provider port. | Change when `20880` is not available. |
+| `dubbo.provider.executor.thread-pool` | Selects the bounded Dubbo handler pool. | Keep `eager` for the low-RSS sample. `cached` is rejected because it is not bounded. |
+| `dubbo.provider.executor.core-threads` | Keeps this many handler threads after idle shrink. | Keep `1` on a one-CPU memory-first pod. |
+| `dubbo.provider.executor.max-threads` | Caps Dubbo handler threads. | Raise only when CPU and downstream capacity are proven. |
+| `dubbo.provider.executor.queue-capacity` | Caps queued provider requests. | Lower for faster fail-fast; never use an unbounded queue. |
+| `dubbo.provider.executor.idle-timeout-ms` | Shrinks extra eager threads after inactivity. | Increase only if repeated thread creation appears in a bursty workload. |
+| `dubbo.provider.executor.io-threads` | Caps Netty I/O event-loop threads. | Keep `1` for the one-CPU sample; measure before raising. |
 | `reactor.dubbo.registry-enabled` | Turns ZooKeeper registration on or off. | Use `false` for static Service DNS. Use `true` for ZooKeeper discovery. |
 | `reactor.dubbo.registry-address` | Points to ZooKeeper. | Set only when registry is enabled. |
 | `reactor.dubbo.registry-root` | Sets the ZooKeeper namespace. | Change only if your platform uses a different root. |
