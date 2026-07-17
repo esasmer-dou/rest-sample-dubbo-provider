@@ -11,6 +11,16 @@ context and points to `docker/images/Dockerfile`.
 ZooKeeper is disabled by default because the consumer sample can use static Service DNS/provider
 address mode.
 
+The PostgreSQL container keeps durable commits enabled. The compose recipe changes only checkpoint
+pacing: `checkpoint_timeout=15min`, `checkpoint_completion_target=0.9`,
+`min_wal_size=256MB`, and `max_wal_size=1GB`. This avoids an almost continuous five-minute
+checkpoint cycle during sustained sample writes. It does not disable `fsync`,
+`synchronous_commit`, or `full_page_writes`.
+
+Treat these values as a Docker sample starting point. For an external PostgreSQL service, let the
+database owner size WAL and checkpoint settings from disk latency, recovery-time target, and write
+volume. Do not use `synchronous_commit=off` to hide REST p99 variance.
+
 ## Start
 
 From the project root:
@@ -56,6 +66,16 @@ Image tanımları `docker/images/` altında durur. Compose dosyası build contex
 kullanır ve `docker/images/Dockerfile` dosyasını işaret eder.
 
 ZooKeeper default olarak kapalıdır. Consumer sample static provider adresiyle bağlanabilir.
+
+PostgreSQL container güvenli commit davranışını korur. Compose reçetesi yalnızca checkpoint akışını
+düzenler: `checkpoint_timeout=15min`, `checkpoint_completion_target=0.9`,
+`min_wal_size=256MB` ve `max_wal_size=1GB`. Böylece sürekli write yükünde varsayılan beş dakikalık
+checkpoint döngüsü neredeyse kesintisiz disk yazısına dönüşmez. `fsync`, `synchronous_commit` ve
+`full_page_writes` kapatılmaz.
+
+Bu değerleri Docker sample için başlangıç reçetesi olarak kullanın. Harici PostgreSQL servisinde WAL
+ve checkpoint değerlerini disk gecikmesine, recovery süresi hedefine ve write hacmine göre database
+ekibi belirlemelidir. REST p99 dalgalanmasını saklamak için `synchronous_commit=off` kullanmayın.
 
 ## Başlatma
 

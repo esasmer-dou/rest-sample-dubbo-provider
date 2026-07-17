@@ -3,6 +3,16 @@ name: rest-sample-dubbo-provider
 services:
   postgres:
     image: postgres:16-alpine
+    command:
+      - postgres
+      - -c
+      - checkpoint_timeout=15min
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - min_wal_size=256MB
+      - -c
+      - max_wal_size=1GB
     environment:
       POSTGRES_DB: reactor_sample
       POSTGRES_USER: reactor

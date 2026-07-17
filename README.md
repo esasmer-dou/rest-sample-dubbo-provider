@@ -9,13 +9,13 @@ It can run with static provider mode or ZooKeeper registration. It can return re
 It does not use Spring Boot.
 
 This release uses `java-rust-dubbo:0.4.1`. Provider service interfaces and payload contracts remain
-unchanged, so it can be used directly with `rest-sample-dubbo-consumer:0.3.1`.
+unchanged, so it can be used directly with `rest-sample-dubbo-consumer:0.3.2`.
 
 Shared Dubbo service interfaces come from `com.reactor.sample:rest-sample-utility:0.2.0`. Shared DTO and
 row model records come from `com.reactor.sample:rust-sample-model:0.2.0`. The service interface package
 name remains `com.reactor.rust.dubbo.sample` to keep Dubbo registry paths stable.
 
-[Release notes for v0.3.1](docs/RELEASE_NOTES_v0.3.1.md)
+[Release notes for v0.3.2](docs/RELEASE_NOTES_v0.3.2.md)
 
 ## Contents
 
@@ -95,7 +95,7 @@ java "-Ddubbo.provider.host=127.0.0.1" `
   "-Ddubbo.provider.bind-host=127.0.0.1" `
   "-Ddubbo.provider.port=20880" `
   "-Dreactor.dubbo.registry-enabled=false" `
-  -jar target/rest-sample-dubbo-provider-0.1.1.jar
+  -jar target/rest-sample-dubbo-provider-0.3.2.jar
 ```
 
 The consumer can then use:
@@ -132,7 +132,7 @@ java "-Ddubbo.provider.host=127.0.0.1" `
   "-Dsample.db.password=reactor" `
   "-Dsample.db.schema-init=true" `
   "-Dsample.db.warmup=true" `
-  -jar target/rest-sample-dubbo-provider-0.1.1.jar
+  -jar target/rest-sample-dubbo-provider-0.3.2.jar
 ```
 
 Keep this terminal open. Consumer requests go to this process.
@@ -405,6 +405,8 @@ This starts:
 - PostgreSQL 16 on host port `15432`.
 - `rest-sample-dubbo-provider` on `dubbo://localhost:20880`.
 - ZooKeeper registration disabled with `REACTOR_DUBBO_REGISTRY_ENABLED=false`.
+- Durable PostgreSQL commits with checkpoint pacing set to `15min / 0.9` and WAL recycle bounds of
+  `256MB / 1GB`.
 
 If Docker Desktop already has a manually started PostgreSQL container on port `15432`, stop that
 container first or change the published PostgreSQL port in `docker/docker-compose.yml`.
@@ -418,6 +420,10 @@ docker compose -f docker/docker-compose.yml down
 Effect: this is the simplest Docker Desktop path for the sample consumer. Start the consumer with
 `sample.dubbo.discovery=static` and `reactor.dubbo.providers=127.0.0.1:20880`. If you need
 ZooKeeper discovery, use Recipe 1 instead and explicitly enable registry registration.
+
+The checkpoint values reduce periodic write-latency amplification under a sustained sample load.
+They do not weaken commit durability. Keep `fsync`, `synchronous_commit`, and `full_page_writes`
+enabled. External PostgreSQL installations need their own DBA-reviewed WAL/checkpoint sizing.
 
 ### Recipe 5: Read-Heavy Precomputed Catalog
 

@@ -67,7 +67,7 @@ PostgreSQL hazırsa provider'ı çalıştırın:
 
 ```powershell
 mvn -q package
-java -jar target/rest-sample-dubbo-provider-0.2.0.jar
+java -jar target/rest-sample-dubbo-provider-0.3.2.jar
 ```
 
 Default local ayar ZooKeeper istemez:
@@ -145,6 +145,24 @@ reactor.dubbo.registry-root=dubbo
 | `sample.db.minimum-idle` | Boşta tutulacak connection sayısı | Low-RSS için `0`. |
 | `sample.db.connection-timeout-ms` | Pool'dan connection bekleme süresi | Kısa tutun, DB yavaşsa ölçün. |
 | `sample.db.schema-init` | Demo schema oluşturur | Production'da kapalı olmalıdır. |
+
+### Docker PostgreSQL Checkpoint Başlangıç Reçetesi
+
+Sample Docker Compose şu güvenli başlangıç değerlerini kullanır:
+
+```properties
+checkpoint_timeout=15min
+checkpoint_completion_target=0.9
+min_wal_size=256MB
+max_wal_size=1GB
+```
+
+Bu ayarlar sürekli write yükünde checkpoint disk I/O baskısının REST p99 değerini büyütmesini
+azaltır. Commit güvenliği korunur. `fsync`, `synchronous_commit` ve `full_page_writes` açık kalır.
+
+Harici PostgreSQL servisinde bu değerleri doğrudan kopyalamayın. Database ekibi disk gecikmesine,
+write hacmine ve recovery süresi hedefine göre ölçerek ayarlamalıdır. p99 değerini düşürmek için
+`synchronous_commit=off` kullanmayın.
 
 ## Concurrency Kuralı
 
