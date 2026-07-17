@@ -6,6 +6,8 @@ import com.reactor.rust.dubbo.sample.CustomerQueryService;
 import com.reactor.sample.dubbo.provider.db.PostgresCustomerRepository;
 import com.reactor.sample.dubbo.provider.service.CustomerQueryServiceImpl;
 
+import static com.reactor.rust.dubbo.provider.DubboServiceBinding.service;
+
 public final class DbQueryProviderModule implements DubboProviderApplication.Module {
 
     public static final DbQueryProviderModule INSTANCE = new DbQueryProviderModule();
@@ -18,7 +20,7 @@ public final class DbQueryProviderModule implements DubboProviderApplication.Mod
         PostgresCustomerRepository repository = context.manage(
                 PostgresCustomerRepository.fromProperties(properties));
         CustomerQueryServiceImpl queries = new CustomerQueryServiceImpl(repository);
-        context.service(CustomerQueryService.class, queries)
+        context.services(service(CustomerQueryService.class, queries))
                 .onStartIf(properties.getBoolean("sample.db.warmup"), queries::warmupDatabase);
     }
 }

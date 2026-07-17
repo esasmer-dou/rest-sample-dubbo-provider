@@ -8,14 +8,23 @@ It can run with static provider mode or ZooKeeper registration. It can return re
 
 It does not use Spring Boot.
 
-This release uses `java-rust-dubbo:0.4.1`. Provider service interfaces and payload contracts remain
-unchanged, so it can be used directly with `rest-sample-dubbo-consumer:0.3.2`.
+This release uses `java-rust-dubbo:0.5.0`. Provider service interfaces and payload contracts remain
+unchanged, so it can be used directly with `rest-sample-dubbo-consumer:0.4.0`.
 
-Shared Dubbo service interfaces come from `com.reactor.sample:rest-sample-utility:0.2.0`. Shared DTO and
-row model records come from `com.reactor.sample:rust-sample-model:0.2.0`. The service interface package
+Shared Dubbo service interfaces come from `com.reactor.sample:rest-sample-utility:0.3.0`. Shared DTO and
+row model records come from `com.reactor.sample:rust-sample-model:0.3.0`. The service interface package
 name remains `com.reactor.rust.dubbo.sample` to keep Dubbo registry paths stable.
 
-[Release notes for v0.3.2](docs/RELEASE_NOTES_v0.3.2.md)
+[Release notes for v0.4.0](docs/RELEASE_NOTES_v0.4.0.md)
+
+Database row records use the shared `rust-sample-model` artifact. Its build generates
+`SampleCustomerJdbcMapper` and `CustomerCountsJdbcMapper`, so repository code calls direct mapping
+methods instead of repeating `ResultSet` boilerplate or using reflection. SQL, transaction scope,
+pool limits, and business mapping remain explicit in the provider.
+
+Provider build profiles are physical artifact boundaries. Choose `catalog-static-provider`,
+`db-query-provider`, or the full profile. Do not package all provider surfaces and hide unused ones
+with runtime flags; that keeps unnecessary Dubbo services and classes in the JVM.
 
 ## Contents
 
@@ -95,7 +104,7 @@ java "-Ddubbo.provider.host=127.0.0.1" `
   "-Ddubbo.provider.bind-host=127.0.0.1" `
   "-Ddubbo.provider.port=20880" `
   "-Dreactor.dubbo.registry-enabled=false" `
-  -jar target/rest-sample-dubbo-provider-0.3.2.jar
+  -jar target/rest-sample-dubbo-provider-0.4.0.jar
 ```
 
 The consumer can then use:
@@ -132,7 +141,7 @@ java "-Ddubbo.provider.host=127.0.0.1" `
   "-Dsample.db.password=reactor" `
   "-Dsample.db.schema-init=true" `
   "-Dsample.db.warmup=true" `
-  -jar target/rest-sample-dubbo-provider-0.3.2.jar
+  -jar target/rest-sample-dubbo-provider-0.4.0.jar
 ```
 
 Keep this terminal open. Consumer requests go to this process.
@@ -606,8 +615,8 @@ provider limits instead of tuning them independently:
 
 | Provider capacity | Consumer setting to check | Practical rule |
 |-------------------|---------------------------|----------------|
-| `dubbo.provider.service.NestedCatalogService.max-concurrent=16` | `reactor.rust.route-admission.get.api.v1.catalog.nested.max-concurrent=16` | Simple catalog calls can match provider concurrency. |
-| `dubbo.provider.service.CustomerQueryService.max-concurrent=2` | `reactor.rust.route-admission.get.api.v1.customers.db.max-concurrent=8` | Acceptable for async/short calls.<br>If p99 grows, lower this first. |
+| `dubbo.provider.service.NestedCatalogService.max-concurrent=16` | `reactor.rust.route-budget.rpc-catalog-read.route-admission.max-concurrent=16` | Simple catalog calls can match provider concurrency. |
+| `dubbo.provider.service.CustomerQueryService.max-concurrent=2` | `reactor.rust.route-budget.rpc-customer-raw-read.route-admission.max-concurrent=8` | Acceptable for async/short calls.<br>If p99 grows, lower this first. |
 | `sample.db.maximum-pool-size=2` | DB method provider limit | DB method concurrency should not exceed the Hikari pool unless you intentionally want provider-side waiting. |
 
 BEST: start with small provider limits and increase only after measuring provider CPU, DB pool wait,
@@ -965,6 +974,20 @@ public static void main(String[] args) throws Exception {
 interface/method concurrency limits, registers with ZooKeeper when enabled, rolls back partial
 startup, and closes resources in reverse order. `FullProviderModule` contains the repository and
 explicit service list. To create a smaller provider, use a narrower module or the prepared Maven profiles:
+
+```java
+public void configure(DubboProviderApplication.ModuleContext context) {
+    PostgresCustomerRepository repository = context.manage(
+            PostgresCustomerRepository.fromProperties(context.properties()));
+    context.services(
+            service(CustomerQueryService.class, new CustomerQueryServiceImpl(repository)),
+            service(CustomerCommandService.class, new CustomerCommandServiceImpl(repository)));
+}
+```
+
+`service(...)` validates the interface/implementation pair during startup. The bindings are an
+explicit startup plan, not a runtime dispatch layer. Provider calls still go directly through the
+exported Dubbo service, so this refactor does not add hot-path allocation or lookup cost.
 
 | Provider shape | Service plan | Use it when |
 |----------------|--------------|-------------|
@@ -1345,7 +1368,7 @@ Call through the REST consumer:
 ```powershell
 curl http://127.0.0.1:8080/api/v1/catalog/nested
 curl http://127.0.0.1:8080/api/v1/customers/db
-curl http://127.0.0.1:8080/api/v1/catalog/db/customers
+curl http://127.0.0.1:8080/api/v1/customers/db
 ```
 
 Expected DB-backed response includes:

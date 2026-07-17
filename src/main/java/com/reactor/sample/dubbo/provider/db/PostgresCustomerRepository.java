@@ -4,10 +4,11 @@ import com.reactor.rust.dubbo.provider.jdbc.HikariDataSources;
 import com.reactor.rust.dubbo.provider.jdbc.JdbcRepository;
 import com.reactor.rust.dubbo.config.DubboApplicationProperties;
 import com.reactor.sample.model.customer.CustomerCounts;
+import com.reactor.sample.model.customer.CustomerCountsJdbcMapper;
 import com.reactor.sample.model.customer.SampleCustomer;
+import com.reactor.sample.model.customer.SampleCustomerJdbcMapper;
 
 import java.sql.Connection;
-import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.List;
 
@@ -72,13 +73,13 @@ public final class PostgresCustomerRepository extends JdbcRepository {
     }
 
     public List<SampleCustomer> findCustomers() {
-        return query("Find customers", SELECT_CUSTOMERS, SqlBinder.none(), PostgresCustomerRepository::toCustomer);
+        return query("Find customers", SELECT_CUSTOMERS, SqlBinder.none(), SampleCustomerJdbcMapper::map);
     }
 
     public SampleCustomer findCustomer(long customerId) {
         return queryOne("Find customer", SELECT_CUSTOMER_BY_ID, statement -> {
             statement.setLong(1, customerId);
-        }, PostgresCustomerRepository::toCustomer, null);
+        }, SampleCustomerJdbcMapper::map, null);
     }
 
     public List<SampleCustomer> findCustomersBySegment(String segment, int limit) {
@@ -86,7 +87,7 @@ public final class PostgresCustomerRepository extends JdbcRepository {
         return query("Find customers by segment", SELECT_CUSTOMERS_BY_SEGMENT, statement -> {
             statement.setString(1, segment == null || segment.isBlank() ? "standard" : segment);
             statement.setInt(2, boundedLimit);
-        }, PostgresCustomerRepository::toCustomer);
+        }, SampleCustomerJdbcMapper::map);
     }
 
     public CustomerCounts countCustomersByStatus() {
@@ -94,7 +95,7 @@ public final class PostgresCustomerRepository extends JdbcRepository {
                 "Count customers",
                 SELECT_CUSTOMER_COUNTS,
                 SqlBinder.none(),
-                row -> new CustomerCounts(row.getInt("total"), row.getInt("active"), row.getInt("passive")),
+                CustomerCountsJdbcMapper::map,
                 new CustomerCounts(0, 0, 0));
     }
 
@@ -126,7 +127,7 @@ public final class PostgresCustomerRepository extends JdbcRepository {
             statement.setString(2, fullName);
             statement.setString(3, segment);
             statement.setString(4, email);
-        }, PostgresCustomerRepository::toCustomer, null);
+        }, SampleCustomerJdbcMapper::map, null);
         if (customer == null) {
             throw new IllegalStateException("Create customer returned no row");
         }
@@ -184,20 +185,7 @@ public final class PostgresCustomerRepository extends JdbcRepository {
         return queryOne("Update customer", sql, statement -> {
             statement.setString(1, value);
             statement.setLong(2, customerId);
-        }, PostgresCustomerRepository::toCustomer, null);
-    }
-
-    private static SampleCustomer toCustomer(ResultSet row) throws Exception {
-        return new SampleCustomer(
-                row.getLong("id"),
-                row.getString("customer_no"),
-                row.getString("full_name"),
-                row.getString("segment"),
-                row.getString("email"),
-                row.getString("status"),
-                row.getTimestamp("created_at").toInstant(),
-                row.getTimestamp("updated_at").toInstant()
-        );
+        }, SampleCustomerJdbcMapper::map, null);
     }
 
 }

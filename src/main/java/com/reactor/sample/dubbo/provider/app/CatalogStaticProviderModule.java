@@ -4,6 +4,8 @@ import com.reactor.rust.dubbo.provider.DubboProviderApplication;
 import com.reactor.rust.dubbo.sample.CatalogJsonService;
 import com.reactor.sample.dubbo.provider.service.CatalogJsonServiceImpl;
 
+import static com.reactor.rust.dubbo.provider.DubboServiceBinding.service;
+
 public final class CatalogStaticProviderModule implements DubboProviderApplication.Module {
 
     public static final CatalogStaticProviderModule INSTANCE = new CatalogStaticProviderModule();
@@ -12,6 +14,6 @@ public final class CatalogStaticProviderModule implements DubboProviderApplicati
 
     @Override
     public void configure(DubboProviderApplication.ModuleContext context) {
-        context.service(CatalogJsonService.class, new CatalogJsonServiceImpl());
+        context.services(service(CatalogJsonService.class, new CatalogJsonServiceImpl()));
     }
 }

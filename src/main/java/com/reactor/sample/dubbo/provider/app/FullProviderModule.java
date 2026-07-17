@@ -10,6 +10,8 @@ import com.reactor.sample.dubbo.provider.service.CustomerCommandServiceImpl;
 import com.reactor.sample.dubbo.provider.service.CustomerQueryServiceImpl;
 import com.reactor.sample.dubbo.provider.service.NestedCatalogServiceImpl;
 
+import static com.reactor.rust.dubbo.provider.DubboServiceBinding.service;
+
 public final class FullProviderModule implements DubboProviderApplication.Module {
 
     public static final FullProviderModule INSTANCE = new FullProviderModule();
@@ -22,9 +24,10 @@ public final class FullProviderModule implements DubboProviderApplication.Module
         PostgresCustomerRepository repository = context.manage(
                 PostgresCustomerRepository.fromProperties(properties));
         CustomerQueryServiceImpl queries = new CustomerQueryServiceImpl(repository);
-        context.service(NestedCatalogService.class, new NestedCatalogServiceImpl())
-                .service(CustomerQueryService.class, queries)
-                .service(CustomerCommandService.class, new CustomerCommandServiceImpl(repository))
+        context.services(
+                        service(NestedCatalogService.class, new NestedCatalogServiceImpl()),
+                        service(CustomerQueryService.class, queries),
+                        service(CustomerCommandService.class, new CustomerCommandServiceImpl(repository)))
                 .onStartIf(properties.getBoolean("sample.db.warmup"), queries::warmupDatabase);
     }
 }
