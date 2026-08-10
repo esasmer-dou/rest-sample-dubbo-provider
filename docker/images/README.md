@@ -1,5 +1,7 @@
 # Provider Docker Images
 
+[English](README.md) | [Türkçe](README.tr.md)
+
 Keep provider image definitions in this directory. Build commands still use the project root as the
 Docker context so `.dockerignore`, `pom.xml`, and `src/` are resolved correctly.
 
@@ -15,3 +17,6 @@ Example:
 ```powershell
 docker build -f docker/images/Dockerfile.jlink.db-query -t rest-sample-dubbo-provider:db-query-jlink .
 ```
+
+Select the smallest image that contains the exported service set. Runtime properties can disable a
+service, but they cannot remove classes already packaged in the full image.

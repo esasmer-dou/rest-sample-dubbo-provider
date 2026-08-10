@@ -10,14 +10,32 @@ Rust-Java REST consumer sample'ının kullandığı sade bir Java Dubbo provider
 - Hazır JSON veya typed record dönebilir.
 - Full profile PostgreSQL ve HikariCP kullanır.
 
-Kullanılan sürümler: `java-rust-dubbo:0.6.0`, `rest-sample-utility:0.3.1`, `rust-sample-model:0.3.1`.
+Kullanılan sürümler: `java-rust-dubbo:0.7.0`, `rest-sample-utility:0.4.0`, `rust-sample-model:0.4.0`.
 
-## 0.5.0 ile Neler Hizalandı?
+POM, Java, library, processor ve build gate sürümlerini hizalamak için `rust-java-platform-parent`
+kullanır. Provider bilinçli olarak REST starter kullanmaz. Maven profile'ları paketleme öncesinde
+provider yüzeyini fiziksel olarak seçer. Shaded JAR build-only processor metadata'sını içermez.
+
+## 0.6.0 ile Neler Hizalandı?
 
 - Full, yalnız katalog ve yalnız DB sorgu artifact'leri ayrı Maven profile olarak kalır.
 - Workspace Docker build, paketlemeden önce uyumlu REST ve Dubbo artifact'lerini kurar.
 - Provider sade Java kullanmaya ve service'leri açıkça kaydetmeye devam eder.
 - Provider interface'leri, SQL davranışı, HikariCP ayarları ve opsiyonel ZooKeeper kaydı değişmedi.
+
+## Açık Provider Akışı
+
+| Sizin yönettiğiniz alan | Ortak library'nin yönettiği alan | Runtime kuralı |
+| --- | --- | --- |
+| Service implementasyonu ve business rule | Interface ve record kontratları | Consumer ve provider aynı kontrat sürümünü kullanır |
+| Repository SQL ve transaction sınırı | Seçildiğinde generated JDBC record mapper | Reflective row mapping yok |
+| HikariCP limitleri | Provider başlangıç yardımcıları | DB kapasitesi açık biçimde yönetilir |
+| Interface ve metot bazlı concurrency | Bounded service executor | Yavaş bir metot sınırsız thread tüketmez |
+| Static veya ZooKeeper kayıt seçimi | Registry adapter | Static Service DNS consumer için ZooKeeper zorunlu değildir |
+
+Provider sade Java olarak kalır. Business logic Rust'a taşınmaz. Process müşteri command veya DB
+erişimi kullanmıyorsa daha küçük Maven profile seçin. Runtime property, full artefact içine zaten
+paketlenmiş sınıfları çıkaramaz.
 
 ## Buradan Başlayın
 
@@ -47,7 +65,7 @@ java `
   "-Ddubbo.provider.bind-host=127.0.0.1" `
   "-Ddubbo.provider.port=20880" `
   "-Dreactor.dubbo.registry-enabled=false" `
-  -jar target/rest-sample-dubbo-provider-0.5.0.jar
+  -jar target/rest-sample-dubbo-provider-0.6.0.jar
 ```
 
 Bu provider'ı consumer'ın `native-static-consumer` profile'ı ile kullanın.
@@ -80,7 +98,7 @@ java `
   "-Dsample.db.password=reactor" `
   "-Dsample.db.schema-init=true" `
   "-Dsample.db.warmup=true" `
-  -jar target/rest-sample-dubbo-provider-0.5.0.jar
+  -jar target/rest-sample-dubbo-provider-0.6.0.jar
 ```
 
 Provider `127.0.0.1:20880` adresinde çalışır.
@@ -267,7 +285,7 @@ GitHub Packages için `read:packages` yetkili token gerekir. Token'ın private o
 
 - [Türkçe kullanıcı rehberi](docs/USER_GUIDE.tr.md)
 - [Türkçe PDF rehberi](docs/rest-sample-dubbo-provider-user-guide.tr.pdf)
-- [Docker çalışma rehberi](docker/README.md)
+- [Docker çalışma rehberi](docker/README.tr.md)
 - [Production ayarları](src/main/resources/config/production.properties)
 - [Advanced tuning ayarları](src/main/resources/config/advanced-tuning.properties)
-- [v0.5.0 release notları](docs/RELEASE_NOTES_v0.5.0.tr.md)
+- [v0.6.0 release notları](docs/RELEASE_NOTES_v0.6.0.tr.md)

@@ -10,15 +10,33 @@ A plain Java Dubbo provider used by the Rust-Java REST consumer sample.
 - It can serve ready JSON or typed records.
 - The full profile uses PostgreSQL and HikariCP.
 
-Current versions: `java-rust-dubbo:0.6.0`, `rest-sample-utility:0.3.1`, `rust-sample-model:0.3.1`.
+Current versions: `java-rust-dubbo:0.7.0`, `rest-sample-utility:0.4.0`, `rust-sample-model:0.4.0`.
 
-## What 0.5.0 Aligns
+The POM inherits `rust-java-platform-parent` for aligned Java, library, processor, and build-gate
+versions. The provider deliberately does not use a REST starter. Maven profiles physically select
+the provider surface before packaging, and the shaded JAR excludes build-only processor metadata.
+
+## What 0.6.0 Aligns
 
 - Full, catalog-only, and DB-query-only artifacts stay isolated Maven profiles.
 - Workspace Docker builds install the exact aligned REST and Dubbo artifacts before packaging.
 - The provider remains plain Java and keeps explicit service registration.
 - Provider interfaces, SQL behavior, HikariCP settings, and optional ZooKeeper registration are
   unchanged.
+
+## Explicit Provider Flow
+
+| You own | Shared library owns | Runtime rule |
+| --- | --- | --- |
+| Service implementation and business rules | Interface and record contracts | Consumer and provider use the same contract version |
+| Repository SQL and transaction boundary | Generated JDBC record mapper where selected | No reflective row mapping |
+| HikariCP limits | Provider bootstrap helpers | DB capacity remains explicit |
+| Per-interface and per-method concurrency | Bounded service executor | One slow method cannot consume unbounded threads |
+| Static or ZooKeeper registration choice | Registry adapter | ZooKeeper is not required for static Service DNS consumers |
+
+The provider stays plain Java. It does not move business logic into Rust. Select a smaller Maven
+profile when the process does not need customer commands or database access; runtime properties
+cannot remove classes already packaged in a full artifact.
 
 ## Start Here
 
@@ -48,7 +66,7 @@ java `
   "-Ddubbo.provider.bind-host=127.0.0.1" `
   "-Ddubbo.provider.port=20880" `
   "-Dreactor.dubbo.registry-enabled=false" `
-  -jar target/rest-sample-dubbo-provider-0.5.0.jar
+  -jar target/rest-sample-dubbo-provider-0.6.0.jar
 ```
 
 Use it with the consumer's `native-static-consumer` profile.
@@ -81,7 +99,7 @@ java `
   "-Dsample.db.password=reactor" `
   "-Dsample.db.schema-init=true" `
   "-Dsample.db.warmup=true" `
-  -jar target/rest-sample-dubbo-provider-0.5.0.jar
+  -jar target/rest-sample-dubbo-provider-0.6.0.jar
 ```
 
 The provider listens on `127.0.0.1:20880`.
@@ -271,4 +289,4 @@ The server IDs in `~/.m2/settings.xml` must match the POM:
 - [Docker runbook](docker/README.md)
 - [Production settings](src/main/resources/config/production.properties)
 - [Advanced tuning](src/main/resources/config/advanced-tuning.properties)
-- [v0.5.0 release notes](docs/RELEASE_NOTES_v0.5.0.md)
+- [v0.6.0 release notes](docs/RELEASE_NOTES_v0.6.0.md)

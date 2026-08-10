@@ -4,17 +4,22 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <parent>
+        <groupId>com.reactor</groupId>
+        <artifactId>rust-java-platform-parent</artifactId>
+        <version>4.2.0</version>
+        <relativePath/>
+    </parent>
+
     <groupId>com.reactor.sample</groupId>
     <artifactId>rest-sample-dubbo-provider</artifactId>
-    <version>0.5.0</version>
+    <version>0.6.0</version>
     <packaging>jar</packaging>
 
     <name>rest-sample-dubbo-provider</name>
     <description>Minimal plain Java Dubbo provider for rest-sample-dubbo-consumer.</description>
 
     <properties>
-        <maven.compiler.release>21</maven.compiler.release>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <dubbo.version>3.3.5</dubbo.version>
         <netty.version>4.2.1.Final</netty.version>
         <zookeeper.version>3.7.2</zookeeper.version>
@@ -23,8 +28,6 @@
         <hikaricp.version>5.1.0</hikaricp.version>
         <log4j.version>2.19.0</log4j.version>
         <junit.version>5.10.2</junit.version>
-        <java-rust-dubbo.version>0.6.0</java-rust-dubbo.version>
-        <rest-sample-utility.version>0.3.1</rest-sample-utility.version>
         <provider.mainClass>com.reactor.sample.dubbo.provider.app.RestSampleDubboProviderApplication</provider.mainClass>
     </properties>
 
@@ -47,12 +50,10 @@
         <dependency>
             <groupId>com.reactor.sample</groupId>
             <artifactId>rest-sample-utility</artifactId>
-            <version>${rest-sample-utility.version}</version>
         </dependency>
         <dependency>
             <groupId>com.reactor</groupId>
             <artifactId>java-rust-dubbo</artifactId>
-            <version>${java-rust-dubbo.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.dubbo</groupId>
@@ -283,14 +284,6 @@
     <build>
         <plugins>
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
-                <configuration>
-                    <release>${maven.compiler.release}</release>
-                </configuration>
-            </plugin>
-            <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.5.0</version>
@@ -301,7 +294,6 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.2.5</version>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -328,6 +320,17 @@
                                         <exclude>META-INF/*.SF</exclude>
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>com/dslplatform/json/processor/**</exclude>
+                                        <exclude>META-INF/services/javax.annotation.processing.Processor</exclude>
+                                        <exclude>META-INF/gradle/incremental.annotation.processors</exclude>
+                                        <exclude>module-info.class</exclude>
+                                        <exclude>META-INF/versions/**/module-info.class</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <artifact>com.reactor:java-rust-dubbo</artifact>
+                                    <excludes>
+                                        <exclude>com/reactor/rust/dubbo/codegen/**</exclude>
                                     </excludes>
                                 </filter>
                             </filters>
