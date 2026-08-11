@@ -67,7 +67,7 @@ PostgreSQL hazırsa provider'ı çalıştırın:
 
 ```powershell
 mvn -q package
-java -jar target/rest-sample-dubbo-provider-0.6.0.jar
+java -jar target/rest-sample-dubbo-provider-0.6.1.jar
 ```
 
 Default local ayar ZooKeeper istemez:

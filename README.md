@@ -10,13 +10,13 @@ A plain Java Dubbo provider used by the Rust-Java REST consumer sample.
 - It can serve ready JSON or typed records.
 - The full profile uses PostgreSQL and HikariCP.
 
-Current versions: `java-rust-dubbo:0.7.0`, `rest-sample-utility:0.4.0`, `rust-sample-model:0.4.0`.
+Current versions: `rust-java-rest:4.3.0`, `java-rust-dubbo:0.7.1`, `rest-sample-utility:0.4.1`, `rust-sample-model:0.4.1`.
 
 The POM inherits `rust-java-platform-parent` for aligned Java, library, processor, and build-gate
 versions. The provider deliberately does not use a REST starter. Maven profiles physically select
 the provider surface before packaging, and the shaded JAR excludes build-only processor metadata.
 
-## What 0.6.0 Aligns
+## What 0.6.1 Aligns
 
 - Full, catalog-only, and DB-query-only artifacts stay isolated Maven profiles.
 - Workspace Docker builds install the exact aligned REST and Dubbo artifacts before packaging.
@@ -66,7 +66,7 @@ java `
   "-Ddubbo.provider.bind-host=127.0.0.1" `
   "-Ddubbo.provider.port=20880" `
   "-Dreactor.dubbo.registry-enabled=false" `
-  -jar target/rest-sample-dubbo-provider-0.6.0.jar
+  -jar target/rest-sample-dubbo-provider-0.6.1.jar
 ```
 
 Use it with the consumer's `native-static-consumer` profile.
@@ -99,7 +99,7 @@ java `
   "-Dsample.db.password=reactor" `
   "-Dsample.db.schema-init=true" `
   "-Dsample.db.warmup=true" `
-  -jar target/rest-sample-dubbo-provider-0.6.0.jar
+  -jar target/rest-sample-dubbo-provider-0.6.1.jar
 ```
 
 The provider listens on `127.0.0.1:20880`.
@@ -289,4 +289,4 @@ The server IDs in `~/.m2/settings.xml` must match the POM:
 - [Docker runbook](docker/README.md)
 - [Production settings](src/main/resources/config/production.properties)
 - [Advanced tuning](src/main/resources/config/advanced-tuning.properties)
-- [v0.6.0 release notes](docs/RELEASE_NOTES_v0.6.0.md)
+- [v0.6.1 release notes](docs/RELEASE_NOTES_v0.6.1.md)
