@@ -24,7 +24,12 @@ Consumer'ı başlatmadan önce iki container'ı kontrol edin:
 ```powershell
 docker compose -f docker/docker-compose.yml ps
 docker logs rest-sample-dubbo-provider
+Test-NetConnection localhost -Port 20880
 ```
+
+PostgreSQL container'ı `healthy` görünmelidir. Provider container'ı `Up` durumunda kalmalıdır. TCP
+kontrolünde `TcpTestSucceeded : True` görülmelidir. Bu kontroller süreç ve port durumunu doğrular.
+Dubbo sözleşmesini uçtan uca doğrulamak için consumer üzerinden bir iş çağrısı daha yapın.
 
 ## Consumer Ayarı
 
@@ -65,3 +70,6 @@ checkpoint değerlerini database ekibi disk gecikmesi, recovery hedefi ve write 
 belirlemelidir. API p99 dalgalanmasını gizlemek için `synchronous_commit=off` kullanmayın.
 
 Image tanımları [`images/README.tr.md`](images/README.tr.md) dosyasında açıklanır.
+
+Service seçimi, database ayarları ve production sınırları için [provider rehberine](../README.tr.md)
+dönün.

@@ -18,5 +18,15 @@ Example:
 docker build -f docker/images/Dockerfile.jlink.db-query -t rest-sample-dubbo-provider:db-query-jlink .
 ```
 
+Verify the resulting image:
+
+```powershell
+docker image inspect rest-sample-dubbo-provider:db-query-jlink `
+  --format '{{.Id}} size={{.Size}} bytes'
+```
+
 Select the smallest image that contains the exported service set. Runtime properties can disable a
 service, but they cannot remove classes already packaged in the full image.
+
+Do not place database passwords or Maven credentials in a Dockerfile. Use runtime Secrets and
+BuildKit secrets. Return to the [Docker runbook](../README.md) to start PostgreSQL and the provider.

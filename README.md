@@ -12,6 +12,19 @@ A plain Java Dubbo provider used by the Rust-Java REST consumer sample.
 
 Current versions: `rust-java-rest:4.3.0`, `java-rust-dubbo:0.7.1`, `rest-sample-utility:0.4.1`, `rust-sample-model:0.4.1`.
 
+## Read This First
+
+Package only the service surface this provider exports. A runtime property can disable behavior,
+but it cannot remove already packaged Dubbo, database, model, or service classes.
+
+| Copy | Replace in your provider |
+| --- | --- |
+| Maven profile split | Your catalog/query/command service groups |
+| Shared interfaces and records | Your versioned wire contracts |
+| Bounded interface/method executor settings | Limits measured against your DB and CPU capacity |
+| Hikari and transaction boundaries | Your datasource, SQL, indexes, and idempotency rules |
+| Optional ZooKeeper registration | Your deployment discovery model |
+
 The POM inherits `rust-java-platform-parent` for aligned Java, library, processor, and build-gate
 versions. The provider deliberately does not use a REST starter. Maven profiles physically select
 the provider surface before packaging, and the shaded JAR excludes build-only processor metadata.
@@ -33,6 +46,14 @@ the provider surface before packaging, and the shaded JAR excludes build-only pr
 | HikariCP limits | Provider bootstrap helpers | DB capacity remains explicit |
 | Per-interface and per-method concurrency | Bounded service executor | One slow method cannot consume unbounded threads |
 | Static or ZooKeeper registration choice | Registry adapter | ZooKeeper is not required for static Service DNS consumers |
+
+```mermaid
+flowchart LR
+    C["Dubbo consumer"] --> E["Bounded provider executor"]
+    E --> S["Java service implementation"]
+    S --> R["Repository and transaction"]
+    R --> DB["PostgreSQL"]
+```
 
 The provider stays plain Java. It does not move business logic into Rust. Select a smaller Maven
 profile when the process does not need customer commands or database access; runtime properties
@@ -281,6 +302,28 @@ The server IDs in `~/.m2/settings.xml` must match the POM:
 | PostgreSQL connection fails | JDBC URL, `15432` port, username, and password |
 | Typed DTO is rejected | Shared model version and `serialize.allowlist` |
 | Some write requests are much slower | DB lock wait, Hikari pool wait, method limit, and same-row contention |
+
+## Production Checklist
+
+- Package the smallest Maven profile that exports the required interfaces.
+- Keep consumer, provider, model, and utility contract versions aligned.
+- Set provider advertised host separately from bind host when the platform requires it.
+- Bound interface and method concurrency; keep it consistent with Hikari and database capacity.
+- Use transactions and idempotency for commands; distinguish same-row contention from normal writes.
+- Keep liveness local. Put short provider/database checks in readiness.
+- Test consumer/provider startup, provider restart, c16/c64/c256 mixed methods, p99, errors, RSS, and DB pool wait.
+- Enable ZooKeeper only when registration/discovery is required by the deployment model.
+
+## Glossary
+
+| Term | Meaning |
+| --- | --- |
+| Provider | Application that implements and exports Dubbo interfaces |
+| Bind host | Local interface on which the provider listens |
+| Advertised host | Address consumers receive and connect to |
+| Interface limit | Shared concurrency boundary for all methods on one service |
+| Method override | Smaller or different concurrency limit for one method |
+| Pool wait | Time a request waits for a Hikari database connection |
 
 ## More Detail
 

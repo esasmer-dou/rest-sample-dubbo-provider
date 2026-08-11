@@ -24,7 +24,12 @@ both containers before starting the consumer:
 ```powershell
 docker compose -f docker/docker-compose.yml ps
 docker logs rest-sample-dubbo-provider
+Test-NetConnection localhost -Port 20880
 ```
+
+The PostgreSQL container must report `healthy`. The provider container must remain `Up`, and the
+TCP test must report `TcpTestSucceeded : True`. This proves process and port readiness; run a
+consumer business request to verify the Dubbo contract end to end.
 
 ## Consumer Settings
 
@@ -66,3 +71,6 @@ the database owner must size WAL and checkpoints from disk latency, recovery tar
 volume. Do not use `synchronous_commit=off` to hide API p99 variance.
 
 Image definitions are documented in [`images/README.md`](images/README.md).
+
+Return to the [provider guide](../README.md) for service selection, database settings, and
+production limits.

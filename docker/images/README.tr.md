@@ -18,5 +18,15 @@ docker build `
   -t rest-sample-dubbo-provider:db-query-jlink .
 ```
 
+Oluşan image'ı doğrulayın:
+
+```powershell
+docker image inspect rest-sample-dubbo-provider:db-query-jlink `
+  --format '{{.Id}} size={{.Size}} bytes'
+```
+
 Export edilen service setini içeren en küçük image'ı seçin. Runtime property bir service'i kapatabilir.
 Ancak full image içine paketlenmiş sınıfları çıkaramaz.
+
+Database parolasını veya Maven anahtarını Dockerfile içine yazmayın. Runtime Secret ve BuildKit
+secret kullanın. PostgreSQL ile provider'ı başlatmak için [Docker rehberine](../README.tr.md) dönün.

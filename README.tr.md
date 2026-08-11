@@ -12,6 +12,19 @@ Rust-Java REST consumer sample'ının kullandığı sade bir Java Dubbo provider
 
 Kullanılan sürümler: `rust-java-rest:4.3.0`, `java-rust-dubbo:0.7.1`, `rest-sample-utility:0.4.1`, `rust-sample-model:0.4.1`.
 
+## Önce Bu Bölümü Okuyun
+
+Yalnız provider'ın sunduğu service yüzeyini paketleyin. Runtime property davranışı kapatabilir;
+ancak pakete girmiş Dubbo, database, model veya service sınıflarını çıkaramaz.
+
+| Kopyalayın | Kendi provider'ınızda değiştirin |
+| --- | --- |
+| Maven profile ayrımı | Katalog, sorgu ve command service gruplarınız |
+| Ortak interface ve record'lar | Sürümlü wire kontratlarınız |
+| Sınırlı interface/metot executor ayarları | DB ve CPU kapasitenizle ölçülen limitler |
+| Hikari ve transaction sınırları | Datasource, SQL, index ve idempotency kurallarınız |
+| Opsiyonel ZooKeeper kaydı | Deployment discovery modeliniz |
+
 POM, Java, library, processor ve build gate sürümlerini hizalamak için `rust-java-platform-parent`
 kullanır. Provider bilinçli olarak REST starter kullanmaz. Maven profile'ları paketleme öncesinde
 provider yüzeyini fiziksel olarak seçer. Shaded JAR build-only processor metadata'sını içermez.
@@ -33,8 +46,16 @@ provider yüzeyini fiziksel olarak seçer. Shaded JAR build-only processor metad
 | Interface ve metot bazlı concurrency | Bounded service executor | Yavaş bir metot sınırsız thread tüketmez |
 | Static veya ZooKeeper kayıt seçimi | Registry adapter | Static Service DNS consumer için ZooKeeper zorunlu değildir |
 
+```mermaid
+flowchart LR
+    C["Dubbo consumer"] --> E["Sınırlı provider executor"]
+    E --> S["Java service implementasyonu"]
+    S --> R["Repository ve transaction"]
+    R --> DB["PostgreSQL"]
+```
+
 Provider sade Java olarak kalır. Business logic Rust'a taşınmaz. Process müşteri command veya DB
-erişimi kullanmıyorsa daha küçük Maven profile seçin. Runtime property, full artefact içine zaten
+erişimi kullanmıyorsa daha küçük Maven profile seçin. Runtime property, full artifact içine zaten
 paketlenmiş sınıfları çıkaramaz.
 
 ## Buradan Başlayın
@@ -280,6 +301,28 @@ GitHub Packages için `read:packages` yetkili token gerekir. Token'ın private o
 | PostgreSQL bağlantısı kurulamıyor | JDBC URL, `15432` portu, kullanıcı adı ve parola |
 | Typed DTO reddediliyor | Ortak model sürümü ve `serialize.allowlist` |
 | Bazı write istekleri çok yavaş | DB lock bekleme, Hikari pool bekleme, metot limiti ve aynı satır çakışması |
+
+## Production Kontrol Listesi
+
+- Gerekli interface'leri sunan en küçük Maven profile'ı paketleyin.
+- Consumer, provider, model ve utility kontrat sürümlerini hizalı tutun.
+- Platform gerektiriyorsa yayınlanan host ile bind host değerini ayrı ayarlayın.
+- Interface ve metot concurrency değerlerini sınırlayın; Hikari ve DB kapasitesiyle uyumlu tutun.
+- Command işlemlerinde transaction ve idempotency kullanın. Aynı satır çakışmasını normal write yükünden ayırın.
+- Liveness kontrolünü lokal tutun. Kısa provider/database kontrollerini readiness'e koyun.
+- Consumer/provider başlangıcı, provider restart, c16/c64/c256 karışık metot, p99, hata, RSS ve DB pool wait testi yapın.
+- Yalnız deployment modeliniz registration/discovery gerektiriyorsa ZooKeeper açın.
+
+## Kısa Sözlük
+
+| Terim | Basit anlamı |
+| --- | --- |
+| Provider | Dubbo interface'lerini uygulayan ve dışarı açan uygulama |
+| Bind host | Provider'ın dinlediği lokal network interface'i |
+| Advertised host | Consumer'a bildirilen ve bağlantı kurulan adres |
+| Interface limit | Bir service'in bütün metotlarını kapsayan eşzamanlılık sınırı |
+| Method override | Tek bir metot için verilen daha küçük veya farklı limit |
+| Pool wait | İsteğin Hikari database connection beklediği süre |
 
 ## Ayrıntılı Bilgi
 
