@@ -10,7 +10,7 @@ Rust-Java REST consumer sample'ının kullandığı sade bir Java Dubbo provider
 - Hazır JSON veya typed record dönebilir.
 - Full profile PostgreSQL ve HikariCP kullanır.
 
-Kullanılan sürümler: `rust-java-rest:4.5.0`, `java-rust-dubbo:0.7.2`, `rest-sample-utility:0.4.1`, `rust-sample-model:0.4.1`.
+Kullanılan sürümler: `rust-java-rest:4.5.6`, `java-rust-dubbo:0.7.3`, `rest-sample-utility:0.4.2`, `rust-sample-model:0.4.2`.
 
 ## Önce Bu Bölümü Okuyun
 
@@ -29,13 +29,16 @@ POM, Java, library, processor ve build gate sürümlerini hizalamak için `rust-
 kullanır. Provider bilinçli olarak REST starter kullanmaz. Maven profile'ları paketleme öncesinde
 provider yüzeyini fiziksel olarak seçer. Shaded JAR build-only processor metadata'sını içermez.
 
-## 0.6.4 ile Neler Hizalandı?
+Telemetri eklemeden önce [Glowroot Agent Kullanımı](#glowroot-agent-kullanımı) bölümündeki plain-Java
+sınırını okuyun.
+
+## 0.6.5 ile Neler Hizalandı?
 
 - Full, yalnız katalog ve yalnız DB sorgu artifact'leri ayrı Maven profile olarak kalır.
 - Workspace Docker build, paketlemeden önce uyumlu REST ve Dubbo artifact'lerini kurar.
 - Provider sade Java kullanmaya ve service'leri açıkça kaydetmeye devam eder.
 - Provider interface'leri, SQL davranışı, HikariCP ayarları ve opsiyonel ZooKeeper kaydı değişmedi.
-- Build sırasındaki platform ve ABI kontrolleri REST `4.5.0` ile hizalandı.
+- Build sırasındaki platform ve ABI kontrolleri REST `4.5.6` ile hizalandı.
 
 ## Açık Provider Akışı
 
@@ -87,7 +90,7 @@ java `
   "-Ddubbo.provider.bind-host=127.0.0.1" `
   "-Ddubbo.provider.port=20880" `
   "-Dreactor.dubbo.registry-enabled=false" `
-  -jar target/rest-sample-dubbo-provider-0.6.4.jar
+  -jar target/rest-sample-dubbo-provider-0.6.5.jar
 ```
 
 Bu provider'ı consumer'ın `native-static-consumer` profile'ı ile kullanın.
@@ -120,7 +123,7 @@ java `
   "-Dsample.db.password=reactor" `
   "-Dsample.db.schema-init=true" `
   "-Dsample.db.warmup=true" `
-  -jar target/rest-sample-dubbo-provider-0.6.4.jar
+  -jar target/rest-sample-dubbo-provider-0.6.5.jar
 ```
 
 Provider `127.0.0.1:20880` adresinde çalışır.
@@ -242,6 +245,41 @@ sample.db.schema-init=false
 
 Sample bu değeri yalnızca kolay lokal başlangıç için `true` yapar.
 
+## Glowroot Agent Kullanımı
+
+Bu provider sade Java üzerinde, resmi Dubbo/Netty server çalışma katmanıyla çalışır. REST server veya
+Spring Boot kullanmaz. Sınırlı `java-rust-glowroot-agent:0.4.0` bugün bu süreçte kendiliğinden
+başlamaz ve Java Dubbo provider executor'ını otomatik olarak izlemez.
+
+Şu ayarlar tek başına agent'i çalıştırmaz:
+
+```properties
+reactor.glowroot.enabled=true
+```
+
+```text
+-javaagent:java-rust-glowroot-agent-0.4.0.jar
+```
+
+Bootstrap JAR native çalışma katmanı içermez. Yalnız `-javaagent` argümanlarını property'lere aktarır. Sırf
+telemetri için provider'a Spring starter veya `rust-java-rest` eklemeyin. Bu seçim kullanılmayan
+Spring ya da HTTP runtime yüzeyi ekler ve provider'ın düşük bellek hedefini bozar.
+
+| Durum | Doğru seçim | Sonuç |
+|---|---|---|
+| Provider sade Java kalacak | Kubernetes süreç/container ölçümleri, provider ve Hikari metrikleri | En küçük çalışma katmanı; sınırlı agent verisi Central'a gitmez |
+| Provider zaten başka bir nedenle Spring Boot | Non-web Spring starter ile `jvm` veya `sql` | Bounded process/JVM/explicit SQL telemetrisi kullanılabilir |
+| Her Dubbo metodu ve JDBC çağrısı otomatik izlenecek | Tam Glowroot Java agent | Daha geniş özellik; daha yüksek memory ve CPU maliyeti |
+| Sade Java provider sınırlı Rust agent kullanacak | Spring bağımsız standalone çalışma katmanı ve açık provider event API'si | Bu yüzey `0.4.0` içinde henüz yoktur |
+
+Consumer tarafındaki Rust-native Dubbo metriği bu provider'ın iç ölçümü değildir. O değer consumer'ın
+gördüğü toplam RPC süresidir. Provider DB pool wait, SQL ve service executor sürelerini ayrı görmek
+için provider tarafında ayrıca desteklenen bir agent çalışma katmanı gerekir.
+
+Provider gerçekten Spring Boot non-web uygulamasına dönüştürülürse
+[`java-rust-glowroot-agent`](https://github.com/esasmer-dou/java-rust-glowroot-agent/blob/master/README.tr.md#2-web-olmayan-uygulamalar)
+rehberini kullanın. Yalnız telemetri için bu dönüşümü yapmayın.
+
 ## Container Image'ları
 
 | Image tanımı | Kullanım |
@@ -302,6 +340,7 @@ GitHub Packages için `read:packages` yetkili token gerekir. Token'ın private o
 | PostgreSQL bağlantısı kurulamıyor | JDBC URL, `15432` portu, kullanıcı adı ve parola |
 | Typed DTO reddediliyor | Ortak model sürümü ve `serialize.allowlist` |
 | Bazı write istekleri çok yavaş | DB lock bekleme, Hikari pool bekleme, metot limiti ve aynı satır çakışması |
+| `reactor.glowroot.enabled=true` yazdım ama veri yok | Bu sade Java provider agent çalışma katmanını başlatmaz; yukarıdaki destek sınırını okuyun |
 
 ## Production Kontrol Listesi
 
@@ -313,6 +352,7 @@ GitHub Packages için `read:packages` yetkili token gerekir. Token'ın private o
 - Liveness kontrolünü lokal tutun. Kısa provider/database kontrollerini readiness'e koyun.
 - Consumer/provider başlangıcı, provider restart, c16/c64/c256 karışık metot, p99, hata, RSS ve DB pool wait testi yapın.
 - Yalnız deployment modeliniz registration/discovery gerektiriyorsa ZooKeeper açın.
+- Yalnız telemetri için Spring Boot veya REST runtime eklemeyin.
 
 ## Kısa Sözlük
 
@@ -324,6 +364,7 @@ GitHub Packages için `read:packages` yetkili token gerekir. Token'ın private o
 | Interface limit | Bir service'in bütün metotlarını kapsayan eşzamanlılık sınırı |
 | Method override | Tek bir metot için verilen daha küçük veya farklı limit |
 | Pool wait | İsteğin Hikari database connection beklediği süre |
+| Bootstrap agent JAR | Yalnız `-javaagent` argümanlarını property'lere çeviren, runtime içermeyen küçük JAR |
 
 ## Ayrıntılı Bilgi
 
@@ -332,4 +373,4 @@ GitHub Packages için `read:packages` yetkili token gerekir. Token'ın private o
 - [Docker çalışma rehberi](docker/README.tr.md)
 - [Production ayarları](src/main/resources/config/production.properties)
 - [Advanced tuning ayarları](src/main/resources/config/advanced-tuning.properties)
-- [v0.6.4 sürüm notları](docs/RELEASE_NOTES_v0.6.4.tr.md)
+- [v0.6.5 sürüm notları](docs/RELEASE_NOTES_v0.6.5.tr.md)

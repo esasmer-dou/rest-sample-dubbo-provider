@@ -10,7 +10,7 @@ A plain Java Dubbo provider used by the Rust-Java REST consumer sample.
 - It can serve ready JSON or typed records.
 - The full profile uses PostgreSQL and HikariCP.
 
-Current versions: `rust-java-rest:4.5.0`, `java-rust-dubbo:0.7.2`, `rest-sample-utility:0.4.1`, `rust-sample-model:0.4.1`.
+Current versions: `rust-java-rest:4.5.6`, `java-rust-dubbo:0.7.3`, `rest-sample-utility:0.4.2`, `rust-sample-model:0.4.2`.
 
 ## Read This First
 
@@ -29,14 +29,16 @@ The POM inherits `rust-java-platform-parent` for aligned Java, library, processo
 versions. The provider deliberately does not use a REST starter. Maven profiles physically select
 the provider surface before packaging, and the shaded JAR excludes build-only processor metadata.
 
-## What 0.6.4 Aligns
+Read the plain-Java boundary in [Glowroot Agent Use](#glowroot-agent-use) before adding telemetry.
+
+## What 0.6.5 Aligns
 
 - Full, catalog-only, and DB-query-only artifacts stay isolated Maven profiles.
 - Workspace Docker builds install the exact aligned REST and Dubbo artifacts before packaging.
 - The provider remains plain Java and keeps explicit service registration.
 - Provider interfaces, SQL behavior, HikariCP settings, and optional ZooKeeper registration are
   unchanged.
-- Build-time platform and ABI checks are aligned with REST `4.5.0`.
+- Build-time platform and ABI checks are aligned with REST `4.5.6`.
 
 ## Explicit Provider Flow
 
@@ -88,7 +90,7 @@ java `
   "-Ddubbo.provider.bind-host=127.0.0.1" `
   "-Ddubbo.provider.port=20880" `
   "-Dreactor.dubbo.registry-enabled=false" `
-  -jar target/rest-sample-dubbo-provider-0.6.4.jar
+  -jar target/rest-sample-dubbo-provider-0.6.5.jar
 ```
 
 Use it with the consumer's `native-static-consumer` profile.
@@ -121,7 +123,7 @@ java `
   "-Dsample.db.password=reactor" `
   "-Dsample.db.schema-init=true" `
   "-Dsample.db.warmup=true" `
-  -jar target/rest-sample-dubbo-provider-0.6.4.jar
+  -jar target/rest-sample-dubbo-provider-0.6.5.jar
 ```
 
 The provider listens on `127.0.0.1:20880`.
@@ -243,6 +245,41 @@ sample.db.schema-init=false
 
 The sample sets it to `true` only for an easy local start.
 
+## Glowroot Agent Use
+
+This provider runs on plain Java with the official Dubbo/Netty server runtime. It does not use a
+REST server or Spring Boot. The bounded `java-rust-glowroot-agent:0.4.0` does not start automatically
+in this process and does not instrument the Java Dubbo provider executor.
+
+Neither of these settings starts the agent on its own:
+
+```properties
+reactor.glowroot.enabled=true
+```
+
+```text
+-javaagent:java-rust-glowroot-agent-0.4.0.jar
+```
+
+The bootstrap JAR contains no native runtime. It only maps `-javaagent` arguments to properties. Do
+not add the Spring starter or `rust-java-rest` only for telemetry. That would add unused Spring or
+HTTP runtime surfaces and would break the provider's low-memory purpose.
+
+| Situation | Correct choice | Result |
+|---|---|---|
+| Keep the provider as plain Java | Kubernetes process/container metrics plus provider and Hikari metrics | Smallest runtime; no bounded agent data is sent to Central |
+| The provider already uses Spring Boot for another reason | Non-web Spring starter with `jvm` or `sql` | Bounded process/JVM/explicit SQL telemetry is available |
+| Every Dubbo method and JDBC call needs automatic instrumentation | Full Glowroot Java agent | Broader features with higher memory and CPU cost |
+| Plain Java provider needs the bounded Rust agent | Spring-independent standalone runtime and an explicit provider event API | This surface is not part of release `0.4.0` |
+
+The Rust-native Dubbo metric observed by the consumer is not an internal provider measurement. It is
+the total RPC duration seen by the consumer. Provider DB pool wait, SQL, and service-executor timing
+need a supported agent runtime on the provider side.
+
+If the provider is deliberately converted into a non-web Spring Boot application, follow the
+[`java-rust-glowroot-agent`](https://github.com/esasmer-dou/java-rust-glowroot-agent/blob/master/README.md#2-non-web-applications)
+guide. Do not make that conversion only for telemetry.
+
 ## Container Images
 
 | Image definition | Use |
@@ -303,6 +340,7 @@ The server IDs in `~/.m2/settings.xml` must match the POM:
 | PostgreSQL connection fails | JDBC URL, `15432` port, username, and password |
 | Typed DTO is rejected | Shared model version and `serialize.allowlist` |
 | Some write requests are much slower | DB lock wait, Hikari pool wait, method limit, and same-row contention |
+| `reactor.glowroot.enabled=true` produces no data | This plain-Java provider does not start the agent runtime; see the boundary above |
 
 ## Production Checklist
 
@@ -314,6 +352,7 @@ The server IDs in `~/.m2/settings.xml` must match the POM:
 - Keep liveness local. Put short provider/database checks in readiness.
 - Test consumer/provider startup, provider restart, c16/c64/c256 mixed methods, p99, errors, RSS, and DB pool wait.
 - Enable ZooKeeper only when registration/discovery is required by the deployment model.
+- Do not add Spring Boot or the REST runtime only for telemetry.
 
 ## Glossary
 
@@ -325,6 +364,7 @@ The server IDs in `~/.m2/settings.xml` must match the POM:
 | Interface limit | Shared concurrency boundary for all methods on one service |
 | Method override | Smaller or different concurrency limit for one method |
 | Pool wait | Time a request waits for a Hikari database connection |
+| Bootstrap agent JAR | Small JAR that maps `-javaagent` arguments to properties and contains no runtime |
 
 ## More Detail
 
@@ -333,4 +373,4 @@ The server IDs in `~/.m2/settings.xml` must match the POM:
 - [Docker runbook](docker/README.md)
 - [Production settings](src/main/resources/config/production.properties)
 - [Advanced tuning](src/main/resources/config/advanced-tuning.properties)
-- [v0.6.4 release notes](docs/RELEASE_NOTES_v0.6.4.md)
+- [v0.6.5 release notes](docs/RELEASE_NOTES_v0.6.5.md)
