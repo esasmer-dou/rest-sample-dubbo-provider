@@ -10,7 +10,7 @@ A plain Java Dubbo provider used by the Rust-Java REST consumer sample.
 - It can serve ready JSON or typed records.
 - The full profile uses PostgreSQL and HikariCP.
 
-Current versions: `rust-java-rest:4.5.6`, `java-rust-dubbo:0.7.3`, `rest-sample-utility:0.4.2`, `rust-sample-model:0.4.2`.
+Current versions: `rust-java-platform-parent:4.6.2`, `java-rust-dubbo:0.7.3`, `rest-sample-utility:0.4.2`, `rust-sample-model:0.4.2`.
 
 ## Read This First
 
@@ -31,14 +31,17 @@ the provider surface before packaging, and the shaded JAR excludes build-only pr
 
 Read the plain-Java boundary in [Glowroot Agent Use](#glowroot-agent-use) before adding telemetry.
 
-## What 0.6.5 Aligns
+## Current Checkout
+
+This checkout uses platform parent `4.6.2`. The sample version remains `0.6.5`.
+Rebuild the source to use this alignment. The published sample package has not been replaced.
 
 - Full, catalog-only, and DB-query-only artifacts stay isolated Maven profiles.
 - Workspace Docker builds install the exact aligned REST and Dubbo artifacts before packaging.
 - The provider remains plain Java and keeps explicit service registration.
 - Provider interfaces, SQL behavior, HikariCP settings, and optional ZooKeeper registration are
   unchanged.
-- Build-time platform and ABI checks are aligned with REST `4.5.6`.
+- Build-time platform and ABI checks are aligned with REST `4.6.2`.
 
 ## Explicit Provider Flow
 
@@ -248,7 +251,7 @@ The sample sets it to `true` only for an easy local start.
 ## Glowroot Agent Use
 
 This provider runs on plain Java with the official Dubbo/Netty server runtime. It does not use a
-REST server or Spring Boot. The bounded `java-rust-glowroot-agent:0.4.0` does not start automatically
+REST server or Spring Boot. The bounded `java-rust-glowroot-agent:0.5.4` does not start automatically
 in this process and does not instrument the Java Dubbo provider executor.
 
 Neither of these settings starts the agent on its own:
@@ -258,7 +261,7 @@ reactor.glowroot.enabled=true
 ```
 
 ```text
--javaagent:java-rust-glowroot-agent-0.4.0.jar
+-javaagent:java-rust-glowroot-agent-0.5.4.jar
 ```
 
 The bootstrap JAR contains no native runtime. It only maps `-javaagent` arguments to properties. Do
@@ -270,7 +273,7 @@ HTTP runtime surfaces and would break the provider's low-memory purpose.
 | Keep the provider as plain Java | Kubernetes process/container metrics plus provider and Hikari metrics | Smallest runtime; no bounded agent data is sent to Central |
 | The provider already uses Spring Boot for another reason | Non-web Spring starter with `jvm` or `sql` | Bounded process/JVM/explicit SQL telemetry is available |
 | Every Dubbo method and JDBC call needs automatic instrumentation | Full Glowroot Java agent | Broader features with higher memory and CPU cost |
-| Plain Java provider needs the bounded Rust agent | Spring-independent standalone runtime and an explicit provider event API | This surface is not part of release `0.4.0` |
+| Plain Java provider needs the bounded Rust agent | Spring-independent standalone runtime and an explicit provider event API | Release `0.5.4` does not include this plain-Java integration |
 
 The Rust-native Dubbo metric observed by the consumer is not an internal provider measurement. It is
 the total RPC duration seen by the consumer. Provider DB pool wait, SQL, and service-executor timing

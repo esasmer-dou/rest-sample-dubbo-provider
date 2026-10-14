@@ -10,7 +10,7 @@ Rust-Java REST consumer sample'ının kullandığı sade bir Java Dubbo provider
 - Hazır JSON veya typed record dönebilir.
 - Full profile PostgreSQL ve HikariCP kullanır.
 
-Kullanılan sürümler: `rust-java-rest:4.5.6`, `java-rust-dubbo:0.7.3`, `rest-sample-utility:0.4.2`, `rust-sample-model:0.4.2`.
+Kullanılan sürümler: `rust-java-platform-parent:4.6.2`, `java-rust-dubbo:0.7.3`, `rest-sample-utility:0.4.2`, `rust-sample-model:0.4.2`.
 
 ## Önce Bu Bölümü Okuyun
 
@@ -32,13 +32,16 @@ provider yüzeyini fiziksel olarak seçer. Shaded JAR build-only processor metad
 Telemetri eklemeden önce [Glowroot Agent Kullanımı](#glowroot-agent-kullanımı) bölümündeki plain-Java
 sınırını okuyun.
 
-## 0.6.5 ile Neler Hizalandı?
+## Güncel Kaynak Ayarları
+
+Bu kaynak ağacı platform parent `4.6.2` kullanır. Sample sürümü `0.6.5` olarak kalır.
+Bu hizalamayı kullanmak için kaynak kodu yeniden derleyin. Yayınlanmış sample paketi güncellenmedi.
 
 - Full, yalnız katalog ve yalnız DB sorgu artifact'leri ayrı Maven profile olarak kalır.
 - Workspace Docker build, paketlemeden önce uyumlu REST ve Dubbo artifact'lerini kurar.
 - Provider sade Java kullanmaya ve service'leri açıkça kaydetmeye devam eder.
 - Provider interface'leri, SQL davranışı, HikariCP ayarları ve opsiyonel ZooKeeper kaydı değişmedi.
-- Build sırasındaki platform ve ABI kontrolleri REST `4.5.6` ile hizalandı.
+- Build sırasındaki platform ve ABI kontrolleri REST `4.6.2` ile hizalandı.
 
 ## Açık Provider Akışı
 
@@ -248,7 +251,7 @@ Sample bu değeri yalnızca kolay lokal başlangıç için `true` yapar.
 ## Glowroot Agent Kullanımı
 
 Bu provider sade Java üzerinde, resmi Dubbo/Netty server çalışma katmanıyla çalışır. REST server veya
-Spring Boot kullanmaz. Sınırlı `java-rust-glowroot-agent:0.4.0` bugün bu süreçte kendiliğinden
+Spring Boot kullanmaz. Sınırlı `java-rust-glowroot-agent:0.5.4` bugün bu süreçte kendiliğinden
 başlamaz ve Java Dubbo provider executor'ını otomatik olarak izlemez.
 
 Şu ayarlar tek başına agent'i çalıştırmaz:
@@ -258,7 +261,7 @@ reactor.glowroot.enabled=true
 ```
 
 ```text
--javaagent:java-rust-glowroot-agent-0.4.0.jar
+-javaagent:java-rust-glowroot-agent-0.5.4.jar
 ```
 
 Bootstrap JAR native çalışma katmanı içermez. Yalnız `-javaagent` argümanlarını property'lere aktarır. Sırf
@@ -270,7 +273,7 @@ Spring ya da HTTP runtime yüzeyi ekler ve provider'ın düşük bellek hedefini
 | Provider sade Java kalacak | Kubernetes süreç/container ölçümleri, provider ve Hikari metrikleri | En küçük çalışma katmanı; sınırlı agent verisi Central'a gitmez |
 | Provider zaten başka bir nedenle Spring Boot | Non-web Spring starter ile `jvm` veya `sql` | Bounded process/JVM/explicit SQL telemetrisi kullanılabilir |
 | Her Dubbo metodu ve JDBC çağrısı otomatik izlenecek | Tam Glowroot Java agent | Daha geniş özellik; daha yüksek memory ve CPU maliyeti |
-| Sade Java provider sınırlı Rust agent kullanacak | Spring bağımsız standalone çalışma katmanı ve açık provider event API'si | Bu yüzey `0.4.0` içinde henüz yoktur |
+| Sade Java provider sınırlı Rust agent kullanacak | Spring bağımsız standalone çalışma katmanı ve açık provider event API'si | `0.5.4` sürümü bu sade Java entegrasyonunu içermez |
 
 Consumer tarafındaki Rust-native Dubbo metriği bu provider'ın iç ölçümü değildir. O değer consumer'ın
 gördüğü toplam RPC süresidir. Provider DB pool wait, SQL ve service executor sürelerini ayrı görmek
