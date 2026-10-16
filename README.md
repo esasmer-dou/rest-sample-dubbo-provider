@@ -10,7 +10,7 @@ A plain Java Dubbo provider used by the Rust-Java REST consumer sample.
 - It can serve ready JSON or typed records.
 - The full profile uses PostgreSQL and HikariCP.
 
-Current versions: `rust-java-platform-parent:4.6.2`, `java-rust-dubbo:0.7.3`, `rest-sample-utility:0.4.2`, `rust-sample-model:0.4.2`.
+Current versions: `rust-java-platform-parent:4.6.3`, `java-rust-dubbo:0.7.4`, `rest-sample-utility:0.4.3`, `rust-sample-model:0.4.3`.
 
 ## Read This First
 
@@ -33,15 +33,15 @@ Read the plain-Java boundary in [Glowroot Agent Use](#glowroot-agent-use) before
 
 ## Current Checkout
 
-This checkout uses platform parent `4.6.2`. The sample version remains `0.6.5`.
-Rebuild the source to use this alignment. The published sample package has not been replaced.
+Version `0.6.6` uses platform parent `4.6.3`. Rebuild the application with the aligned
+dependencies. See [release notes](docs/RELEASE_NOTES_v0.6.6.md). Runtime settings and URLs are unchanged.
 
 - Full, catalog-only, and DB-query-only artifacts stay isolated Maven profiles.
 - Workspace Docker builds install the exact aligned REST and Dubbo artifacts before packaging.
 - The provider remains plain Java and keeps explicit service registration.
 - Provider interfaces, SQL behavior, HikariCP settings, and optional ZooKeeper registration are
   unchanged.
-- Build-time platform and ABI checks are aligned with REST `4.6.2`.
+- Build-time platform and ABI checks are aligned with REST `4.6.3`.
 
 ## Explicit Provider Flow
 
@@ -93,7 +93,7 @@ java `
   "-Ddubbo.provider.bind-host=127.0.0.1" `
   "-Ddubbo.provider.port=20880" `
   "-Dreactor.dubbo.registry-enabled=false" `
-  -jar target/rest-sample-dubbo-provider-0.6.5.jar
+  -jar target/rest-sample-dubbo-provider-0.6.6.jar
 ```
 
 Use it with the consumer's `native-static-consumer` profile.
@@ -126,7 +126,7 @@ java `
   "-Dsample.db.password=reactor" `
   "-Dsample.db.schema-init=true" `
   "-Dsample.db.warmup=true" `
-  -jar target/rest-sample-dubbo-provider-0.6.5.jar
+  -jar target/rest-sample-dubbo-provider-0.6.6.jar
 ```
 
 The provider listens on `127.0.0.1:20880`.
@@ -376,4 +376,4 @@ The server IDs in `~/.m2/settings.xml` must match the POM:
 - [Docker runbook](docker/README.md)
 - [Production settings](src/main/resources/config/production.properties)
 - [Advanced tuning](src/main/resources/config/advanced-tuning.properties)
-- [v0.6.5 release notes](docs/RELEASE_NOTES_v0.6.5.md)
+- [v0.6.6 release notes](docs/RELEASE_NOTES_v0.6.6.md)

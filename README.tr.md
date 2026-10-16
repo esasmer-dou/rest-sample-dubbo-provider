@@ -10,7 +10,7 @@ Rust-Java REST consumer sample'ının kullandığı sade bir Java Dubbo provider
 - Hazır JSON veya typed record dönebilir.
 - Full profile PostgreSQL ve HikariCP kullanır.
 
-Kullanılan sürümler: `rust-java-platform-parent:4.6.2`, `java-rust-dubbo:0.7.3`, `rest-sample-utility:0.4.2`, `rust-sample-model:0.4.2`.
+Kullanılan sürümler: `rust-java-platform-parent:4.6.3`, `java-rust-dubbo:0.7.4`, `rest-sample-utility:0.4.3`, `rust-sample-model:0.4.3`.
 
 ## Önce Bu Bölümü Okuyun
 
@@ -34,14 +34,14 @@ sınırını okuyun.
 
 ## Güncel Kaynak Ayarları
 
-Bu kaynak ağacı platform parent `4.6.2` kullanır. Sample sürümü `0.6.5` olarak kalır.
-Bu hizalamayı kullanmak için kaynak kodu yeniden derleyin. Yayınlanmış sample paketi güncellenmedi.
+`0.6.6` sürümü platform parent `4.6.3` kullanır. Uygulamayı hizalanmış bağımlılıklarla
+yeniden derleyin. [Sürüm notlarını](docs/RELEASE_NOTES_v0.6.6.tr.md) okuyun. Runtime ayarları ve adresler değişmez.
 
 - Full, yalnız katalog ve yalnız DB sorgu artifact'leri ayrı Maven profile olarak kalır.
 - Workspace Docker build, paketlemeden önce uyumlu REST ve Dubbo artifact'lerini kurar.
 - Provider sade Java kullanmaya ve service'leri açıkça kaydetmeye devam eder.
 - Provider interface'leri, SQL davranışı, HikariCP ayarları ve opsiyonel ZooKeeper kaydı değişmedi.
-- Build sırasındaki platform ve ABI kontrolleri REST `4.6.2` ile hizalandı.
+- Build sırasındaki platform ve ABI kontrolleri REST `4.6.3` ile hizalandı.
 
 ## Açık Provider Akışı
 
@@ -93,7 +93,7 @@ java `
   "-Ddubbo.provider.bind-host=127.0.0.1" `
   "-Ddubbo.provider.port=20880" `
   "-Dreactor.dubbo.registry-enabled=false" `
-  -jar target/rest-sample-dubbo-provider-0.6.5.jar
+  -jar target/rest-sample-dubbo-provider-0.6.6.jar
 ```
 
 Bu provider'ı consumer'ın `native-static-consumer` profile'ı ile kullanın.
@@ -126,7 +126,7 @@ java `
   "-Dsample.db.password=reactor" `
   "-Dsample.db.schema-init=true" `
   "-Dsample.db.warmup=true" `
-  -jar target/rest-sample-dubbo-provider-0.6.5.jar
+  -jar target/rest-sample-dubbo-provider-0.6.6.jar
 ```
 
 Provider `127.0.0.1:20880` adresinde çalışır.
@@ -376,4 +376,4 @@ GitHub Packages için `read:packages` yetkili token gerekir. Token'ın private o
 - [Docker çalışma rehberi](docker/README.tr.md)
 - [Production ayarları](src/main/resources/config/production.properties)
 - [Advanced tuning ayarları](src/main/resources/config/advanced-tuning.properties)
-- [v0.6.5 sürüm notları](docs/RELEASE_NOTES_v0.6.5.tr.md)
+- [v0.6.6 sürüm notları](docs/RELEASE_NOTES_v0.6.6.tr.md)
