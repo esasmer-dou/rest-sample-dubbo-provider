@@ -251,7 +251,7 @@ Sample bu değeri yalnızca kolay lokal başlangıç için `true` yapar.
 ## Glowroot Agent Kullanımı
 
 Bu provider sade Java üzerinde, resmi Dubbo/Netty server çalışma katmanıyla çalışır. REST server veya
-Spring Boot kullanmaz. Sınırlı `java-rust-glowroot-agent:0.5.4` bugün bu süreçte kendiliğinden
+Spring Boot kullanmaz. Sınırlı `java-rust-glowroot-agent:0.6.0` bugün bu süreçte kendiliğinden
 başlamaz ve Java Dubbo provider executor'ını otomatik olarak izlemez.
 
 Şu ayarlar tek başına agent'i çalıştırmaz:
@@ -261,7 +261,7 @@ reactor.glowroot.enabled=true
 ```
 
 ```text
--javaagent:java-rust-glowroot-agent-0.5.4.jar
+-javaagent:java-rust-glowroot-agent-0.6.0.jar
 ```
 
 Bootstrap JAR native çalışma katmanı içermez. Yalnız `-javaagent` argümanlarını property'lere aktarır. Sırf
@@ -273,7 +273,7 @@ Spring ya da HTTP runtime yüzeyi ekler ve provider'ın düşük bellek hedefini
 | Provider sade Java kalacak | Kubernetes süreç/container ölçümleri, provider ve Hikari metrikleri | En küçük çalışma katmanı; sınırlı agent verisi Central'a gitmez |
 | Provider zaten başka bir nedenle Spring Boot | Non-web Spring starter ile `jvm` veya `sql` | Bounded process/JVM/explicit SQL telemetrisi kullanılabilir |
 | Her Dubbo metodu ve JDBC çağrısı otomatik izlenecek | Tam Glowroot Java agent | Daha geniş özellik; daha yüksek memory ve CPU maliyeti |
-| Sade Java provider sınırlı Rust agent kullanacak | Spring bağımsız standalone çalışma katmanı ve açık provider event API'si | `0.5.4` sürümü bu sade Java entegrasyonunu içermez |
+| Sade Java provider sınırlı Rust agent kullanacak | Spring bağımsız standalone çalışma katmanı ve açık provider event API'si | `0.6.0` sürümü bu sade Java entegrasyonunu içermez |
 
 Consumer tarafındaki Rust-native Dubbo metriği bu provider'ın iç ölçümü değildir. O değer consumer'ın
 gördüğü toplam RPC süresidir. Provider DB pool wait, SQL ve service executor sürelerini ayrı görmek

@@ -251,7 +251,7 @@ The sample sets it to `true` only for an easy local start.
 ## Glowroot Agent Use
 
 This provider runs on plain Java with the official Dubbo/Netty server runtime. It does not use a
-REST server or Spring Boot. The bounded `java-rust-glowroot-agent:0.5.4` does not start automatically
+REST server or Spring Boot. The bounded `java-rust-glowroot-agent:0.6.0` does not start automatically
 in this process and does not instrument the Java Dubbo provider executor.
 
 Neither of these settings starts the agent on its own:
@@ -261,7 +261,7 @@ reactor.glowroot.enabled=true
 ```
 
 ```text
--javaagent:java-rust-glowroot-agent-0.5.4.jar
+-javaagent:java-rust-glowroot-agent-0.6.0.jar
 ```
 
 The bootstrap JAR contains no native runtime. It only maps `-javaagent` arguments to properties. Do
@@ -273,7 +273,7 @@ HTTP runtime surfaces and would break the provider's low-memory purpose.
 | Keep the provider as plain Java | Kubernetes process/container metrics plus provider and Hikari metrics | Smallest runtime; no bounded agent data is sent to Central |
 | The provider already uses Spring Boot for another reason | Non-web Spring starter with `jvm` or `sql` | Bounded process/JVM/explicit SQL telemetry is available |
 | Every Dubbo method and JDBC call needs automatic instrumentation | Full Glowroot Java agent | Broader features with higher memory and CPU cost |
-| Plain Java provider needs the bounded Rust agent | Spring-independent standalone runtime and an explicit provider event API | Release `0.5.4` does not include this plain-Java integration |
+| Plain Java provider needs the bounded Rust agent | Spring-independent standalone runtime and an explicit provider event API | Release `0.6.0` does not include this plain-Java integration |
 
 The Rust-native Dubbo metric observed by the consumer is not an internal provider measurement. It is
 the total RPC duration seen by the consumer. Provider DB pool wait, SQL, and service-executor timing
