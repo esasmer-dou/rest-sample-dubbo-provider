@@ -6,6 +6,10 @@ Kullanılan bağımlılıklar platform 4.6.3, cache 0.7.7, Dubbo 0.7.4 ve ortak 
 
 ## Güncelleme
 
+Release JAR'ı varsayılan full-provider profiliyle hazırlanır ve Java bağımlılıklarını içerir.
+Yalnız katalog veya yalnız DB sorgusu için README'deki ilgili Maven/Docker profilini derleyin.
+Paylaşılan full-provider JAR'ı en küçük classpath profili değildir.
+
 Maven bağımlılığını veya parent sürümünü güncelleyin. Uygulamayı yeniden derleyin. Annotation processor sürümü platformla hizalı olsun. İşletim sistemi ve işlemcinize uygun paket içi native dosyayı kullanın. Eski sürümün dosyalarını yerinde değiştirmeyin.
 
 İş mantığı Java'da kalır. Runtime reflection veya yeni bir Java I/O katmanı eklenmez. Telemetri kendiliğinden açılmaz. ARM64 native dosyaları CI üzerinde derlenir. Bu sürümün uygulama kontrolleri x64 üzerinde yapılır. Bu patch için yeni ve evrensel bir RSS veya throughput kazanımı iddia edilmez.

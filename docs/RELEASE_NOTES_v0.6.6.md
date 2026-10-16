@@ -6,6 +6,10 @@ Aligns the sample with platform 4.6.3, cache 0.7.7, Dubbo 0.7.4 and shared model
 
 ## Upgrade
 
+The release JAR uses the default full-provider profile and includes its Java dependencies.
+For the catalog-only or database-query-only surfaces, build the matching Maven/Docker profile
+documented in the README. The supplied full-provider JAR is not the minimum-classpath profile.
+
 Update the Maven dependency or parent and rebuild the application. Keep annotation processors on the aligned platform version. Use the packaged native library for your OS and CPU. Do not replace an old release's assets in place.
 
 Java business logic stays in Java. No runtime reflection, new Java I/O stack or default telemetry activation is added. ARM64 binaries are cross/native-built in CI; runtime application checks for this release use x64. This patch does not claim a new universal RSS or throughput result.
