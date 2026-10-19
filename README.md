@@ -12,7 +12,7 @@ A plain Java Dubbo provider used by the Rust-Java REST consumer sample.
 - It can serve ready JSON or typed records.
 - The full profile uses PostgreSQL and HikariCP.
 
-Current versions: `rust-java-platform-parent:4.7.0`, `java-rust-dubbo:0.8.0`, `rest-sample-utility:0.4.4`, `rust-sample-model:0.4.4`.
+Current versions: `rust-java-platform-parent:4.7.0`, `java-rust-dubbo:0.8.1`, `rest-sample-utility:0.4.4`, `rust-sample-model:0.4.4`.
 
 ## Read This First
 
@@ -35,8 +35,8 @@ Read the plain-Java boundary in [Glowroot Agent Use](#glowroot-agent-use) before
 
 ## Current Checkout
 
-Version `0.7.0` uses platform parent `4.7.0`. Rebuild the application with the aligned
-dependencies. See [release notes](docs/RELEASE_NOTES_v0.7.0.md). Runtime settings and URLs are unchanged.
+Version `0.7.1` uses platform parent `4.7.0`. Rebuild the application with the aligned
+dependencies. See [release notes](docs/RELEASE_NOTES_v0.7.1.md). Runtime settings and URLs are unchanged.
 
 - Full, catalog-only, and DB-query-only artifacts stay isolated Maven profiles.
 - Workspace Docker builds install the exact aligned REST and Dubbo artifacts before packaging.
@@ -95,7 +95,7 @@ java `
   "-Ddubbo.provider.bind-host=127.0.0.1" `
   "-Ddubbo.provider.port=20880" `
   "-Dreactor.dubbo.registry-enabled=false" `
-  -jar target/rest-sample-dubbo-provider-0.7.0.jar
+  -jar target/rest-sample-dubbo-provider-0.7.1.jar
 ```
 
 Use it with the consumer's `native-static-consumer` profile.
@@ -128,7 +128,7 @@ java `
   "-Dsample.db.password=reactor" `
   "-Dsample.db.schema-init=true" `
   "-Dsample.db.warmup=true" `
-  -jar target/rest-sample-dubbo-provider-0.7.0.jar
+  -jar target/rest-sample-dubbo-provider-0.7.1.jar
 ```
 
 The provider listens on `127.0.0.1:20880`.
@@ -252,38 +252,37 @@ The sample sets it to `true` only for an easy local start.
 
 ## Glowroot Agent Use
 
-This provider runs on plain Java with the official Dubbo/Netty server runtime. It does not use a
-REST server or Spring Boot. The bounded `java-rust-glowroot-agent:0.6.0` does not start automatically
-in this process and does not instrument the Java Dubbo provider executor.
+The default build adds no agent dependency. Business logic and existing settings stay unchanged.
+Choose the optional `glowroot` Maven profile when this process needs telemetry.
 
-Neither of these settings starts the agent on its own:
-
-```properties
-reactor.glowroot.enabled=true
+```powershell
+$env:REACTOR_GLOWROOT_ENABLED="true"
+$env:REACTOR_GLOWROOT_PROFILE="micro"
+$env:REACTOR_GLOWROOT_COLLECTOR_ADDRESS="http://127.0.0.1:8181"
+$env:REACTOR_GLOWROOT_AGENT_ID="dubbo-provider-local"
+mvn -Pfull-provider,glowroot clean compile exec:java
 ```
 
-```text
--javaagent:java-rust-glowroot-agent-0.6.0.jar
-```
+The profile adds `java-rust-glowroot-spring-runtime:0.7.0` and uses Dubbo library `0.8.1`.
+Include `full-provider` explicitly. Selecting another Maven profile can deactivate the default profile. This example is for the full provider; catalog-static and db-query images stay unchanged.
 
-The bootstrap JAR contains no native runtime. It only maps `-javaagent` arguments to properties. Do
-not add the Spring starter or `rust-java-rest` only for telemetry. That would add unused Spring or
-HTTP runtime surfaces and would break the provider's low-memory purpose.
+`TelemetryProviderApplication` manages telemetry in the existing provider lifecycle. A startup dispatcher decorator reports methods as transaction type `Dubbo Provider`, name `interface#method`.
+This low-level provider deliberately bypasses Dubbo SPI filters. It does not restore the full filter chain or add reflection/proxies to request handling.
 
-| Situation | Correct choice | Result |
-|---|---|---|
-| Keep the provider as plain Java | Kubernetes process/container metrics plus provider and Hikari metrics | Smallest runtime; no bounded agent data is sent to Central |
-| The provider already uses Spring Boot for another reason | Non-web Spring starter with `jvm` or `sql` | Bounded process/JVM/explicit SQL telemetry is available |
-| Every Dubbo method and JDBC call needs automatic instrumentation | Full Glowroot Java agent | Broader features with higher memory and CPU cost |
-| Plain Java provider needs the bounded Rust agent | Spring-independent standalone runtime and an explicit provider event API | Release `0.6.0` does not include this plain-Java integration |
+No Spring or REST server is added. Enabled telemetry uses the isolated Rust exporter.
+No Java executor is created. Payloads, SQL values and customer data are not sent.
+Provider observation measures actual business completion, not the consumer's total RPC duration.
 
-The Rust-native Dubbo metric observed by the consumer is not an internal provider measurement. It is
-the total RPC duration seen by the consumer. Provider DB pool wait, SQL, and service-executor timing
-need a supported agent runtime on the provider side.
+Set `REACTOR_GLOWROOT_ENABLED=false` to turn telemetry off.
+Build without the `glowroot` profile to remove its dependencies as well.
+Adding the bootstrap JAR alone does not start this lifecycle.
 
-If the provider is deliberately converted into a non-web Spring Boot application, follow the
-[`java-rust-glowroot-agent`](https://github.com/esasmer-dou/java-rust-glowroot-agent/blob/master/README.md#2-non-web-applications)
-guide. Do not make that conversion only for telemetry.
+Add a server with id `github-glowroot` to Maven `settings.xml`.
+Use a valid `read:packages` token. SSH does not download Maven packages.
+Start with `micro`. The HTTP gate's 3 MiB steady paired-median bound is not
+a per-load memory guarantee for this application.
+
+[Setup and profile details](https://github.com/esasmer-dou/java-rust-glowroot-agent/blob/v0.7.0/docs/functional-operations.md)
 
 ## Container Images
 
@@ -378,4 +377,4 @@ The server IDs in `~/.m2/settings.xml` must match the POM:
 - [Docker runbook](docker/README.md)
 - [Production settings](src/main/resources/config/production.properties)
 - [Advanced tuning](src/main/resources/config/advanced-tuning.properties)
-- [v0.7.0 release notes](docs/RELEASE_NOTES_v0.7.0.md)
+- [v0.7.1 release notes](docs/RELEASE_NOTES_v0.7.1.md)

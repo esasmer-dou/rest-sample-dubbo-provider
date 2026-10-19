@@ -13,7 +13,7 @@
 
     <groupId>com.reactor.sample</groupId>
     <artifactId>rest-sample-dubbo-provider</artifactId>
-    <version>0.7.0</version>
+    <version>0.7.1</version>
     <packaging>jar</packaging>
 
     <name>rest-sample-dubbo-provider</name>
@@ -54,6 +54,7 @@
         <dependency>
             <groupId>com.reactor</groupId>
             <artifactId>java-rust-dubbo</artifactId>
+            <version>0.8.1</version>
         </dependency>
         <dependency>
             <groupId>org.apache.dubbo</groupId>
@@ -287,6 +288,25 @@
                     </plugin>
                 </plugins>
             </build>
+        </profile>
+        <profile>
+            <id>glowroot</id>
+            <properties>
+                <provider.mainClass>com.reactor.sample.dubbo.provider.app.TelemetryProviderApplication</provider.mainClass>
+            </properties>
+            <repositories>
+                <repository><id>github-glowroot</id><url>https://maven.pkg.github.com/esasmer-dou/java-rust-glowroot-agent</url></repository>
+            </repositories>
+            <dependencies>
+                <dependency><groupId>com.reactor</groupId><artifactId>java-rust-glowroot-spring-runtime</artifactId><version>0.7.0</version></dependency>
+            </dependencies>
+            <build><plugins><plugin>
+                <groupId>org.codehaus.mojo</groupId><artifactId>build-helper-maven-plugin</artifactId><version>3.6.0</version>
+                <executions><execution><id>glowroot-source</id><phase>generate-sources</phase><goals><goal>add-source</goal></goals>
+                    <configuration><sources><source>src/glowroot/java</source></sources></configuration>
+                </execution></executions>
+            </plugin>
+            </plugins></build>
         </profile>
     </profiles>
 
