@@ -4,7 +4,7 @@
 
 İsteğe bağlı `full-provider,glowroot` profilleri, agent 0.7.0 ile provider işlemlerini gözlemler. Spring veya HTTP sunucusu eklenmez.
 
-Platform 4.7.0 ve ortak sözleşmeler 0.4.4 olarak kalır. Provider, başlangıçtaki dispatcher gözlemi için Dubbo 0.8.1 kullanır.
+Platform 4.7.1 olur. Ortak sözleşmeler 0.4.4 olarak kalır. Provider, başlangıçtaki dispatcher gözlemi için Dubbo 0.8.1 kullanır.
 Düşük-overhead provider SPI filtrelerini atlar. Yalnız seçilen dispatcher gözlemlenir. Tüm filtre zinciri kapalı kalır.
 Mevcut endpoint, SQL, payload ve hata sözleşmeleri değişmez. Agent varsayılan olarak kapalıdır.
 İş mantığı Java'da kalır. Agent açıksa sınırlı gönderim ve kaynak yönetimi Rust'tadır.

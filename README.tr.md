@@ -12,7 +12,7 @@ Rust-Java REST consumer sample'ının kullandığı sade bir Java Dubbo provider
 - Hazır JSON veya typed record dönebilir.
 - Full profile PostgreSQL ve HikariCP kullanır.
 
-Kullanılan sürümler: `rust-java-platform-parent:4.7.0`, `java-rust-dubbo:0.8.1`, `rest-sample-utility:0.4.4`, `rust-sample-model:0.4.4`.
+Kullanılan sürümler: `rust-java-platform-parent:4.7.1`, `java-rust-dubbo:0.8.1`, `rest-sample-utility:0.4.4`, `rust-sample-model:0.4.4`.
 
 ## Önce Bu Bölümü Okuyun
 
@@ -36,14 +36,19 @@ sınırını okuyun.
 
 ## Güncel Kaynak Ayarları
 
-`0.7.1` sürümü platform parent `4.7.0` kullanır. Uygulamayı hizalanmış bağımlılıklarla
+Bu güncelleme, platformu REST `4.7.1` ve isteğe bağlı agent `0.7.0` ile eşler.
+Seçtiğiniz bağımlılığın native dosyasını kullanın. Eski SO/DLL dosyalarını karıştırmayın.
+İş kodu, URL'ler ve ayar anahtarları değişmez. Telemetri varsayılan olarak kapalıdır.
+HTTP micro bellek testi, veritabanı işinde veya daha ayrıntılı profilde aynı maliyeti garanti etmez.
+
+`0.7.1` sürümü platform parent `4.7.1` kullanır. Uygulamayı hizalanmış bağımlılıklarla
 yeniden derleyin. [Sürüm notlarını](docs/RELEASE_NOTES_v0.7.1.tr.md) okuyun. Runtime ayarları ve adresler değişmez.
 
 - Full, yalnız katalog ve yalnız DB sorgu artifact'leri ayrı Maven profile olarak kalır.
 - Workspace Docker build, paketlemeden önce uyumlu REST ve Dubbo artifact'lerini kurar.
 - Provider sade Java kullanmaya ve service'leri açıkça kaydetmeye devam eder.
 - Provider interface'leri, SQL davranışı, HikariCP ayarları ve opsiyonel ZooKeeper kaydı değişmedi.
-- Build sırasındaki platform ve ABI kontrolleri REST `4.7.0` ile hizalandı.
+- Build sırasındaki platform ve ABI kontrolleri REST `4.7.1` ile hizalandı.
 
 ## Açık Provider Akışı
 

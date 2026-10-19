@@ -4,7 +4,7 @@
 
 The optional `full-provider,glowroot` profiles observe provider methods through agent 0.7.0. No Spring or HTTP server is added.
 
-Platform stays 4.7.0 and shared contracts 0.4.4. This provider explicitly uses Dubbo 0.8.1 for its startup dispatcher hook.
+Platform moves to 4.7.1; shared contracts stay at 0.4.4. This provider explicitly uses Dubbo 0.8.1 for its startup dispatcher hook.
 The low-level provider bypasses SPI filters. Telemetry decorates only selected dispatchers; the full filter chain stays disabled.
 Existing endpoints, SQL, payloads and error contracts do not change. Telemetry remains disabled by default.
 Java keeps business logic. Enabled telemetry uses bounded Rust export and resource management.

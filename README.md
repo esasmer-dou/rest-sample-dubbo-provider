@@ -12,7 +12,7 @@ A plain Java Dubbo provider used by the Rust-Java REST consumer sample.
 - It can serve ready JSON or typed records.
 - The full profile uses PostgreSQL and HikariCP.
 
-Current versions: `rust-java-platform-parent:4.7.0`, `java-rust-dubbo:0.8.1`, `rest-sample-utility:0.4.4`, `rust-sample-model:0.4.4`.
+Current versions: `rust-java-platform-parent:4.7.1`, `java-rust-dubbo:0.8.1`, `rest-sample-utility:0.4.4`, `rust-sample-model:0.4.4`.
 
 ## Read This First
 
@@ -35,7 +35,12 @@ Read the plain-Java boundary in [Glowroot Agent Use](#glowroot-agent-use) before
 
 ## Current Checkout
 
-Version `0.7.1` uses platform parent `4.7.0`. Rebuild the application with the aligned
+This update aligns the platform with REST `4.7.1` and optional agent `0.7.0`.
+Use the native file packaged with the dependency you selected. Do not mix older SO/DLL files.
+Business code, URLs and configuration keys stay the same. Telemetry remains disabled by default.
+The HTTP micro memory gate does not guarantee the same overhead for a database job or a richer profile.
+
+Version `0.7.1` uses platform parent `4.7.1`. Rebuild the application with the aligned
 dependencies. See [release notes](docs/RELEASE_NOTES_v0.7.1.md). Runtime settings and URLs are unchanged.
 
 - Full, catalog-only, and DB-query-only artifacts stay isolated Maven profiles.
@@ -43,7 +48,7 @@ dependencies. See [release notes](docs/RELEASE_NOTES_v0.7.1.md). Runtime setting
 - The provider remains plain Java and keeps explicit service registration.
 - Provider interfaces, SQL behavior, HikariCP settings, and optional ZooKeeper registration are
   unchanged.
-- Build-time platform and ABI checks are aligned with REST `4.7.0`.
+- Build-time platform and ABI checks are aligned with REST `4.7.1`.
 
 ## Explicit Provider Flow
 
