@@ -13,6 +13,8 @@ import java.sql.Statement;
 import java.util.List;
 
 public final class PostgresCustomerRepository extends JdbcRepository {
+    private final com.reactor.rust.jdbc.PostgresIdempotency statusCommands;
+    private final boolean idempotencyEnabled;
 
     private static final String SELECT_CUSTOMERS = """
             select id, customer_no, full_name, segment, email, status, created_at, updated_at
@@ -66,6 +68,11 @@ public final class PostgresCustomerRepository extends JdbcRepository {
         super(
                 HikariDataSources.create(properties.asProperties(), "sample.db"),
                 properties.getBoolean("sample.db.schema-init"));
+        idempotencyEnabled = properties.getBoolean("sample.command.idempotency.enabled", false);
+        statusCommands = idempotencyEnabled ? new com.reactor.rust.jdbc.PostgresIdempotency(
+                transactions(), properties.getInt("sample.command.idempotency.timeout-seconds", 2),
+                Long.parseLong(properties.get("sample.command.idempotency.retention-ms", "86400000")),
+                properties.getInt("sample.command.idempotency.max-result-bytes", 65536)) : null;
     }
 
     public static PostgresCustomerRepository fromProperties(DubboApplicationProperties properties) {
@@ -142,6 +149,23 @@ public final class PostgresCustomerRepository extends JdbcRepository {
         return updateSingleField(customerId, UPDATE_CUSTOMER_STATUS, status);
     }
 
+    public com.reactor.rust.dubbo.sample.dto.CustomerMutationResult updateStatusCommand(long customerId, String status,
+            String requestId, java.util.function.Function<SampleCustomer, com.reactor.rust.dubbo.sample.dto.CustomerMutationResult> response) {
+        if (statusCommands == null) return response.apply(updateStatus(customerId, status));
+        if (requestId == null || requestId.isBlank()) throw new IllegalArgumentException("requestId is required for idempotent commands");
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(status.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            byte[] result = statusCommands.execute("sample.customer-status.v1:" + customerId, requestId, digest, session -> {
+                SampleCustomer customer = session.queryOne(UPDATE_CUSTOMER_STATUS,
+                        s -> { s.setString(1, status); s.setLong(2, customerId); }, SampleCustomerJdbcMapper::map, null);
+                return com.reactor.sample.utility.json.SampleJsonCodec.write(response.apply(customer));
+            });
+            return com.reactor.sample.utility.json.SampleJsonCodec.read(result, com.reactor.rust.dubbo.sample.dto.CustomerMutationResult.class);
+        } catch (com.reactor.rust.jdbc.PostgresIdempotency.KeyConflictException conflict) {
+            throw conflict;
+        } catch (Exception failure) { throw new IllegalStateException("Idempotent status command failed", failure); }
+    }
+
     public boolean deleteCustomer(long customerId) {
         return update("Delete customer", """
                      delete from sample_customers
@@ -154,6 +178,10 @@ public final class PostgresCustomerRepository extends JdbcRepository {
     @Override
     protected void initializeSchema(Connection connection) throws Exception {
         try (Statement statement = connection.createStatement()) {
+            if (idempotencyEnabled) {
+                statement.executeUpdate(com.reactor.rust.jdbc.PostgresIdempotency.SCHEMA.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
+                statement.executeUpdate(com.reactor.rust.jdbc.PostgresIdempotency.EXPIRY_INDEX.replace("CREATE INDEX ", "CREATE INDEX IF NOT EXISTS "));
+            }
             statement.executeUpdate("""
                         create table if not exists sample_customers (
                           id bigserial primary key,

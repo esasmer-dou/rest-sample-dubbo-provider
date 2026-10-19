@@ -7,13 +7,13 @@
     <parent>
         <groupId>com.reactor</groupId>
         <artifactId>rust-java-platform-parent</artifactId>
-        <version>4.6.3</version>
+        <version>4.7.0</version>
         <relativePath/>
     </parent>
 
     <groupId>com.reactor.sample</groupId>
     <artifactId>rest-sample-dubbo-provider</artifactId>
-    <version>0.6.6</version>
+    <version>0.7.0</version>
     <packaging>jar</packaging>
 
     <name>rest-sample-dubbo-provider</name>
@@ -188,6 +188,10 @@
                     <version>${postgresql.version}</version>
                 </dependency>
                 <dependency>
+                    <groupId>com.reactor</groupId>
+                    <artifactId>rust-java-jdbc</artifactId>
+                </dependency>
+                <dependency>
                     <groupId>com.zaxxer</groupId>
                     <artifactId>HikariCP</artifactId>
                     <version>${hikaricp.version}</version>
@@ -213,6 +217,7 @@
                                 <include>com/reactor/sample/dubbo/provider/service/CatalogPayloads.java</include>
                             </includes>
                             <testExcludes>
+                                <testExclude>com/reactor/sample/dubbo/provider/IdempotentStatusCommandTest.java</testExclude>
                                 <testExclude>com/reactor/sample/dubbo/provider/NestedCatalogServiceImplTest.java</testExclude>
                                 <testExclude>com/reactor/sample/dubbo/provider/service/CustomerCommandJsonWriterTest.java</testExclude>
                                 <testExclude>com/reactor/sample/dubbo/provider/service/CustomerQueryJsonWriterTest.java</testExclude>
@@ -246,6 +251,10 @@
                     <groupId>org.postgresql</groupId>
                     <artifactId>postgresql</artifactId>
                     <version>${postgresql.version}</version>
+                </dependency>
+                <dependency>
+                    <groupId>com.reactor</groupId>
+                    <artifactId>rust-java-jdbc</artifactId>
                 </dependency>
                 <dependency>
                     <groupId>com.zaxxer</groupId>

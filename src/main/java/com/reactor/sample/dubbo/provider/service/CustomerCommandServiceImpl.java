@@ -102,7 +102,17 @@ public final class CustomerCommandServiceImpl implements CustomerCommandService 
         if (blank(status)) {
             return failure("customer_status_typed", requestId, "status is required");
         }
-        SampleCustomer customer = customerRepository.updateStatus(customerId, status);
+        try {
+            return customerRepository.updateStatusCommand(customerId, status, requestId,
+                    customer -> statusResult(customerId, requestId, customer));
+        } catch (com.reactor.rust.jdbc.PostgresIdempotency.KeyConflictException conflict) {
+            return failure("customer_status_typed", requestId, "idempotency_key_conflict");
+        } catch (IllegalArgumentException invalid) {
+            return failure("customer_status_typed", requestId, "request_id_required");
+        }
+    }
+
+    private static CustomerMutationResult statusResult(long customerId, String requestId, SampleCustomer customer) {
         if (customer == null) {
             return new CustomerMutationResult(
                     "customer_status_typed",

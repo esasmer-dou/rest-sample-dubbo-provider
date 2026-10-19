@@ -5,7 +5,7 @@ import java.time.Instant;
 
 final class CatalogPayloads {
 
-    private static final String NESTED_CATALOG = """
+    static final String NESTED_CATALOG = """
             {
               "source": "rest-sample-dubbo-provider",
               "generatedAt": "%s",
@@ -48,10 +48,22 @@ final class CatalogPayloads {
               }
             }
             """;
+    private static final int TIMESTAMP = NESTED_CATALOG.indexOf("%s");
+    private static final byte[] PREFIX = NESTED_CATALOG.substring(0, TIMESTAMP).getBytes(StandardCharsets.UTF_8);
+    private static final byte[] SUFFIX = NESTED_CATALOG.substring(TIMESTAMP + 2).getBytes(StandardCharsets.UTF_8);
 
     private CatalogPayloads() {}
 
     static byte[] nestedCatalogJson() {
-        return NESTED_CATALOG.formatted(Instant.now()).getBytes(StandardCharsets.UTF_8);
+        return nestedCatalogJson(Instant.now());
+    }
+
+    static byte[] nestedCatalogJson(Instant generatedAt) {
+        byte[] timestamp = generatedAt.toString().getBytes(StandardCharsets.UTF_8);
+        byte[] response = new byte[PREFIX.length + timestamp.length + SUFFIX.length];
+        System.arraycopy(PREFIX, 0, response, 0, PREFIX.length);
+        System.arraycopy(timestamp, 0, response, PREFIX.length, timestamp.length);
+        System.arraycopy(SUFFIX, 0, response, PREFIX.length + timestamp.length, SUFFIX.length);
+        return response;
     }
 }

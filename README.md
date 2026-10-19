@@ -2,6 +2,8 @@
 
 [English](README.md) | [Türkçe](README.tr.md)
 
+New usage guide: [New usage examples](docs/functional-operations.md).
+
 A plain Java Dubbo provider used by the Rust-Java REST consumer sample.
 
 - It does not use Spring Boot.
@@ -10,7 +12,7 @@ A plain Java Dubbo provider used by the Rust-Java REST consumer sample.
 - It can serve ready JSON or typed records.
 - The full profile uses PostgreSQL and HikariCP.
 
-Current versions: `rust-java-platform-parent:4.6.3`, `java-rust-dubbo:0.7.4`, `rest-sample-utility:0.4.3`, `rust-sample-model:0.4.3`.
+Current versions: `rust-java-platform-parent:4.7.0`, `java-rust-dubbo:0.8.0`, `rest-sample-utility:0.4.4`, `rust-sample-model:0.4.4`.
 
 ## Read This First
 
@@ -33,15 +35,15 @@ Read the plain-Java boundary in [Glowroot Agent Use](#glowroot-agent-use) before
 
 ## Current Checkout
 
-Version `0.6.6` uses platform parent `4.6.3`. Rebuild the application with the aligned
-dependencies. See [release notes](docs/RELEASE_NOTES_v0.6.6.md). Runtime settings and URLs are unchanged.
+Version `0.7.0` uses platform parent `4.7.0`. Rebuild the application with the aligned
+dependencies. See [release notes](docs/RELEASE_NOTES_v0.7.0.md). Runtime settings and URLs are unchanged.
 
 - Full, catalog-only, and DB-query-only artifacts stay isolated Maven profiles.
 - Workspace Docker builds install the exact aligned REST and Dubbo artifacts before packaging.
 - The provider remains plain Java and keeps explicit service registration.
 - Provider interfaces, SQL behavior, HikariCP settings, and optional ZooKeeper registration are
   unchanged.
-- Build-time platform and ABI checks are aligned with REST `4.6.3`.
+- Build-time platform and ABI checks are aligned with REST `4.7.0`.
 
 ## Explicit Provider Flow
 
@@ -93,7 +95,7 @@ java `
   "-Ddubbo.provider.bind-host=127.0.0.1" `
   "-Ddubbo.provider.port=20880" `
   "-Dreactor.dubbo.registry-enabled=false" `
-  -jar target/rest-sample-dubbo-provider-0.6.6.jar
+  -jar target/rest-sample-dubbo-provider-0.7.0.jar
 ```
 
 Use it with the consumer's `native-static-consumer` profile.
@@ -126,7 +128,7 @@ java `
   "-Dsample.db.password=reactor" `
   "-Dsample.db.schema-init=true" `
   "-Dsample.db.warmup=true" `
-  -jar target/rest-sample-dubbo-provider-0.6.6.jar
+  -jar target/rest-sample-dubbo-provider-0.7.0.jar
 ```
 
 The provider listens on `127.0.0.1:20880`.
@@ -376,4 +378,4 @@ The server IDs in `~/.m2/settings.xml` must match the POM:
 - [Docker runbook](docker/README.md)
 - [Production settings](src/main/resources/config/production.properties)
 - [Advanced tuning](src/main/resources/config/advanced-tuning.properties)
-- [v0.6.6 release notes](docs/RELEASE_NOTES_v0.6.6.md)
+- [v0.7.0 release notes](docs/RELEASE_NOTES_v0.7.0.md)
