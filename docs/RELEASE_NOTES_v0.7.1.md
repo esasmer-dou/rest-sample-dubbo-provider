@@ -6,6 +6,7 @@ The optional `full-provider,glowroot` profiles observe provider methods through 
 
 Platform moves to 4.7.1; shared contracts stay at 0.4.4. This provider explicitly uses Dubbo 0.8.1 for its startup dispatcher hook.
 The low-level provider bypasses SPI filters. Telemetry decorates only selected dispatchers; the full filter chain stays disabled.
+Docker waits for PostgreSQL TCP readiness. The temporary initialization server's Unix socket no longer marks the database ready too early.
 Existing endpoints, SQL, payloads and error contracts do not change. Telemetry remains disabled by default.
 Java keeps business logic. Enabled telemetry uses bounded Rust export and resource management.
 

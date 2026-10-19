@@ -20,7 +20,7 @@ services:
     ports:
       - "15432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U reactor -d reactor_sample"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U reactor -d reactor_sample"]
       interval: 5s
       timeout: 3s
       retries: 20

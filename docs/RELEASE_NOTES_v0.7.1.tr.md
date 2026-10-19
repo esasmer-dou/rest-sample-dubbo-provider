@@ -6,6 +6,7 @@
 
 Platform 4.7.1 olur. Ortak sözleşmeler 0.4.4 olarak kalır. Provider, başlangıçtaki dispatcher gözlemi için Dubbo 0.8.1 kullanır.
 Düşük-overhead provider SPI filtrelerini atlar. Yalnız seçilen dispatcher gözlemlenir. Tüm filtre zinciri kapalı kalır.
+Docker, PostgreSQL'in TCP bağlantısına hazır olmasını bekler. Kurulum sırasında açılan geçici Unix socket, veritabanını erken hazır göstermez.
 Mevcut endpoint, SQL, payload ve hata sözleşmeleri değişmez. Agent varsayılan olarak kapalıdır.
 İş mantığı Java'da kalır. Agent açıksa sınırlı gönderim ve kaynak yönetimi Rust'tadır.
 
