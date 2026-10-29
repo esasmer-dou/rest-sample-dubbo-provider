@@ -2,7 +2,9 @@
 
 [English](functional-operations.md) | [Turkish](functional-operations.tr.md)
 
-Existing behavior remains the default.
+These opt-in examples are present in this `0.8.0` source checkout. Existing defaults
+remain unchanged; use the matching dependencies in the [release notes](RELEASE_NOTES_v0.8.0.md).
+This source guide does not establish published package availability.
 
 ## Enable The Example
 

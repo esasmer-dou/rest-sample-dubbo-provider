@@ -2,7 +2,9 @@
 
 [English](functional-operations.md) | [Turkish](functional-operations.tr.md)
 
-Bu örnek geliştirme kaynaklarındadır. Varsayılan davranış değişmez.
+Bu isteğe bağlı örnekler, bu `0.8.0` kaynak kodunda vardır. Mevcut varsayılanlar
+değişmez; [sürüm notlarındaki](RELEASE_NOTES_v0.8.0.md) eşleşen bağımlılıkları kullanın.
+Bu kaynak rehberi yayımlanmış paketin bulunabilirliğini doğrulamaz.
 
 ## Örneği Açın
 

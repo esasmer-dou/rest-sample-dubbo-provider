@@ -185,7 +185,8 @@ Bu süreç yalnız `CustomerQueryService` sunacaksa yeni `native-db-query-provid
 profilini seçebilirsiniz. PostgreSQL, Hikari ve Java iş servisi korunur. Resmi
 Dubbo/Netty taşıması yerine üretilmiş codec'ler ve Rust kullanılır. Command ve
 katalog servisleri yayınlanmaz. ZooKeeper kaydı yapılmaz. Normal tam provider
-değişmez. Bu profil, yayımlanmış `0.8.0` paketinde henüz yoktur.
+değişmez. Profil bu `0.8.0` kaynak kodunda vardır. Eşleşen kaynak kodu ve native
+kütüphaneyi derleyin; bu rehber yayımlanmış paketin bulunabilirliğini doğrulamaz.
 
 ```powershell
 mvn -B -ntp clean package -Pnative-db-query-provider
@@ -201,6 +202,29 @@ ABI-3 sürümüne ait `librust_dubbo.so` yolunu verin. Consumer'ın static adres
 değişmez. Altı sorgu metodu, interface adı, record ve list dönüşleri, HTTP yanıt
 biçimleri korunur. Bu profille yalnız sorgu rotalarını çağırın.
 
+**UNRELEASED (yayımlanmadı), consumer için 0.8.0 yayını sonrası checkout değişikliği:** aşağıdaki readiness
+seçimi ve katalog koşulu yayımlanmış `0.8.0` sürümünden sonra eklendi. Consumer
+checkout'unu yeniden derleyin; önceden indirilmiş `0.8.0` consumer jar bu ayarları
+ve query-only ayar dosyasını desteklemez.
+
+Normal `full-dubbo-consumer` build'ini, varsayılan full readiness yerine bağımsız
+`config/query-only.properties` dosyasıyla kullanın:
+
+```properties
+sample.consumer.surface=full
+sample.consumer.readiness.contracts=query-only
+sample.consumer.catalog.enabled=false
+sample.dubbo.discovery=static
+reactor.dubbo.providers=rest-sample-dubbo-provider:20880
+```
+
+[Consumer çalıştırma tarifi](https://github.com/esasmer-dou/rest-sample-dubbo-consumer/blob/master/README.tr.md#hazır-olma-sözleşmesi),
+dosyanın başlangıçta nasıl yükleneceğini ve adresin nasıl değiştirileceğini gösterir.
+Katalog client ve route'ları oluşturulmaz. Readiness müşteri sorgusu RPC'sini zorunlu
+tutar, katalog için `SKIPPED` döner. Zorunlu sorgu client'ı yoksa veya çağrı başarısızsa
+`503` döner. Command rotaları consumer build'inde uyum için kalır ancak bu provider'da
+desteklenmez. Readiness seçimi salt-okunur erişim kontrolü değildir.
+
 | Ayar | Varsayılan | Ne işe yarar? |
 | --- | --- | --- |
 | `sample.native-provider.business-workers` | `2` | Java sorgu thread sayısını sınırlar. |
@@ -213,9 +237,10 @@ Worker, servis eşzamanlılığı ve DB havuzu sınırlarını birlikte değerle
 HTTP kuyruk süresini uzatmak, dolu provider'ı hızlandırmaz. Bu profili seçmeden önce
 başlangıç yükünü, kararlı trafiği ve consumer tepe RSS'ini ayrı ayrı ölçün.
 
-Bu profil, kaynak koddan seçilen bir önizlemedir. Varsayılan production reçetesi değildir.
-Altı sorgu metodunun canlı kontrolleri geçti. Başlangıç yükü ve consumer belleği için
-birleşik kabul hâlâ açıktır. Provider RSS'inin düşmesi, tüm sistemin kabulü anlamına gelmez.
+Bu profil isteğe bağlıdır; varsayılan production reçetesi değildir. Önceden kaydedilmiş
+altı sorgu kontrolü, güncel kurulumun kabulünü kanıtlamaz. Başlangıç yükü ve consumer
+belleğini hedef ortamda birlikte doğrulayın. Provider RSS'inin düşmesi, tüm sistemin
+kabulü anlamına gelmez.
 
 Provider HTTP endpoint açmaz. Dubbo interface'lerini yayınlar.
 
@@ -281,10 +306,16 @@ Bu değerlerin nedeni:
 
 1. HikariCP iki database bağlantısı kullanır.
 2. Query ve command concurrency gerçek DB kapasitesine yakın kalır.
-3. Aynı satırı değiştiren işlemler tek tek çalışır.
+3. Metot limitleri tek provider sürecindeki işi sınırlar. Çakışan güncellemeleri PostgreSQL satır kilitleri sıraya alır; bu limitler dağıtık veya metotlar arası müşteri kilidi değildir.
 4. Sınırlı queue, memory'nin kontrolsüz büyümesini engeller.
 
 Veritabanı bağlantı havuzu ile servis limitlerini birlikte artırın. Önce PostgreSQL CPU, bağlantı sayısı, kilit bekleme ve sorgu gecikmesi değerlerine bakın.
+
+`method.patchCustomerStatus.max-concurrent` ve typed karşılığı, metot timeout'u
+değil eşzamanlılık limitidir. Consumer RPC timeout'u, provider request/drain
+süreleri ve DB/SQL beklemesi ayrı bütçelerdir. Caller timeout'u commit edilmiş
+write'ı geri almaz. İsteğe bağlı ortak PostgreSQL idempotency'si yalnız typed
+status command'ı kapsar; [tekrar sözleşmesine](docs/functional-operations.tr.md) bakın.
 
 Yalnızca queue değerini artırmayın. Bu yaklaşım hatayı geciktirir ve en yavaş istekleri daha da yavaşlatır.
 
@@ -419,7 +450,7 @@ GitHub Packages için `read:packages` yetkili token gerekir. Token'ın private o
 | PostgreSQL bağlantısı kurulamıyor | JDBC URL, `15432` portu, kullanıcı adı ve parola |
 | Typed DTO reddediliyor | Ortak model sürümü ve `serialize.allowlist` |
 | Bazı write istekleri çok yavaş | DB lock bekleme, Hikari pool bekleme, metot limiti ve aynı satır çakışması |
-| `reactor.glowroot.enabled=true` yazdım ama veri yok | Bu sade Java provider agent çalışma katmanını başlatmaz; yukarıdaki destek sınırını okuyun |
+| `reactor.glowroot.enabled=true` yazdım ama veri yok | Varsayılan build agent içermez. `full-provider,glowroot` ile derleyip `TelemetryProviderApplication` çalıştırın; telemetry ve collector ayarlarını kontrol edin. Yalnız bootstrap JAR veya flag yeterli değildir |
 
 ## Production Kontrol Listesi
 

@@ -185,7 +185,9 @@ Use the new `native-db-query-provider` profile when this process only serves
 `CustomerQueryService`. It keeps PostgreSQL, Hikari and the Java business service.
 Generated codecs and Rust replace the official Dubbo/Netty transport. It does not
 export commands, catalog services or a ZooKeeper registration. The normal full
-provider remains unchanged. This profile is included in version `0.8.0`.
+provider remains unchanged. The profile is present in this `0.8.0` source checkout.
+Build the matching checkout and native library; this guide does not establish
+published package availability.
 
 ```powershell
 mvn -B -ntp clean package -Pnative-db-query-provider
@@ -201,6 +203,28 @@ path instead of the Windows DLL. Configure the consumer with the same static add
 as the normal provider. The six query methods, interface name, records, lists and
 HTTP response shapes stay the same. Only call query routes with this profile.
 
+**UNRELEASED consumer checkout change after 0.8.0:** the readiness selection and catalog gate
+below were added after published `0.8.0`. Rebuild the consumer checkout; an existing
+downloaded `0.8.0` consumer jar does not support these settings or the query-only overlay.
+
+Use the normal `full-dubbo-consumer` build with its standalone
+`config/query-only.properties` overlay, not the default full readiness contract:
+
+```properties
+sample.consumer.surface=full
+sample.consumer.readiness.contracts=query-only
+sample.consumer.catalog.enabled=false
+sample.dubbo.discovery=static
+reactor.dubbo.providers=rest-sample-dubbo-provider:20880
+```
+
+The [consumer run recipe](https://github.com/esasmer-dou/rest-sample-dubbo-consumer#readiness-contract-selection)
+shows how to load this file at startup and override the address. Catalog clients
+and routes are omitted; readiness requires the customer query RPC and reports
+catalog as `SKIPPED`. Missing/failed required queries return `503`. Command routes
+remain in that consumer build for compatibility but are unsupported by this provider;
+readiness selection is not a read-only access-control policy.
+
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | `sample.native-provider.business-workers` | `2` | Bounds Java query execution threads. |
@@ -213,9 +237,10 @@ Keep the worker, service concurrency and DB pool limits aligned. Increasing an H
 queue timeout does not make a saturated provider faster. Validate startup bursts,
 steady traffic and consumer peak RSS separately before selecting this profile.
 
-This profile is still an opt-in source preview, not the default production recipe.
-Its six query contracts pass live checks. The combined cold-load and consumer-memory
-acceptance is still open. Do not treat lower provider RSS as a guarantee for the full stack.
+This is an opt-in source profile, not the default production recipe. Previously
+recorded six-query checks do not establish acceptance of the current deployment.
+Validate combined cold-load and consumer-memory behavior in the target environment.
+Do not treat lower provider RSS as a guarantee for the full stack.
 
 The provider does not expose HTTP endpoints. It exports Dubbo interfaces.
 
@@ -281,10 +306,16 @@ Why:
 
 1. HikariCP has two database connections.
 2. Query and command concurrency stays close to real DB capacity.
-3. Same-row updates run one at a time.
+3. Method caps bound work in one provider process. PostgreSQL row locks still serialize conflicting updates; these caps are not a distributed or cross-method customer lock.
 4. A bounded queue prevents unlimited memory growth.
 
 Increase the DB pool and service limits together. First check PostgreSQL CPU, connection count, lock wait, and query latency.
+
+`method.patchCustomerStatus.max-concurrent` and its typed counterpart are concurrency
+limits, not per-method timeouts. Consumer RPC timeouts, provider request/drain limits
+and DB/SQL waits are independent budgets. A caller timeout does not roll back a
+committed write. Optional shared-PostgreSQL idempotency covers the typed status
+command only; see the [retry contract](docs/functional-operations.md).
 
 Do not increase only the queue. That delays failures and usually slows the worst requests.
 
@@ -419,7 +450,7 @@ The server IDs in `~/.m2/settings.xml` must match the POM:
 | PostgreSQL connection fails | JDBC URL, `15432` port, username, and password |
 | Typed DTO is rejected | Shared model version and `serialize.allowlist` |
 | Some write requests are much slower | DB lock wait, Hikari pool wait, method limit, and same-row contention |
-| `reactor.glowroot.enabled=true` produces no data | This plain-Java provider does not start the agent runtime; see the boundary above |
+| `reactor.glowroot.enabled=true` produces no data | The default build has no agent. Build/run `full-provider,glowroot` with `TelemetryProviderApplication`, enable telemetry and check collector settings; a bootstrap JAR or flag alone does not start it |
 
 ## Production Checklist
 

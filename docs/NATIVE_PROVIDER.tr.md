@@ -3,9 +3,11 @@
 [English](NATIVE_PROVIDER.md) | [Türkçe](NATIVE_PROVIDER.tr.md)
 
 Bu isteğe bağlı profiller, aynı Java katalog servisini resmî Dubbo motoru ve ortak
-native motorla karşılaştırır. Mevcut varsayılan provider değişmez. Yeni modüller
-**yalnız kaynak çalışmasıdır, yayımlanmadı**. Odak sıcak yük kabulü geçti;
-koordineli platform dağıtımı ve bütün ürünün birleşik kabulü ayrı işlerdir.
+native motorla karşılaştırır. Mevcut varsayılan provider değişmez. Bu profiller,
+bu `0.8.0` kaynak kodunda vardır; eşleşen modülleri ve native dosyaları birlikte
+derleyin. Bu rehber yayımlanmış paketin bulunabilirliğini doğrulamaz. Kaydedilmiş
+odak sıcak yük karşılaştırması, hedef platform dağıtımı ve bütün ürünün birleşik
+kabulünden ayrıdır.
 
 ## Profil Seçimi
 
@@ -144,7 +146,7 @@ limiti 4 kullanır; resmî executor anahtarları kendi ayar kaynağındadır.
 Sample varsayılanı 5 MiB mantıksal istek kabul kapasitesidir; 5 MiB slab veya toplam
 RSS rezervasyonu değildir. Adaptör API'sindeki `Options.defaults` ise queue 64
 kullanır ve 17 MiB eder. Servis/şema/parser ve global kabul sınırlarının tamamı
-[adaptör rehberindedir](../../java-rust-dubbo/native-provider/README.tr.md).
+[adaptör rehberindedir](https://github.com/esasmer-dou/java-rust-dubbo/blob/master/native-provider/README.tr.md).
 
 ## Sahiplik, İzleme Ve Sorun Giderme
 
@@ -173,7 +175,7 @@ başlangıç, durdurma ve metrik okumasında kalır, her RPC'de kullanılmaz. Ba
 başına yazımlar Tokio async mutex kullanır: bekleme OS thread'ini bloklamaz,
 ancak tam frame'ler sırayla yazıldığı için yavaş yazım aynı bağlantıdaki sonraki
 yanıtları geciktirebilir. Ayrı consumer-response registry bu provider yolunda
-değildir. Metrikler için [adaptör rehberine](../../java-rust-dubbo/native-provider/README.tr.md) bakın.
+değildir. Metrikler için [adaptör rehberine](https://github.com/esasmer-dou/java-rust-dubbo/blob/master/native-provider/README.tr.md) bakın.
 
 | Belirti | Yapılacak işlem |
 | --- | --- |
@@ -205,8 +207,9 @@ Her uygulama 1 CPU/128 MiB ile sınırlandı. Başarılı RPS en az 0.98x, p99 e
 HTTP, body ve socket hatası olmadı. Her kol, ölçülen eşzamanlılık düzeyinde hemen
 önce ısıtıldı. Yalnız c16 ile ısınıp c64/c256 ilk penceresini de sıcak sayan eski
 ölçüm planı kullanılmadı. Sınırlar, ölçüm süresi, işçi sayısı ve kuyruk büyütülmedi.
-Güncel Windows DLL/parser-policy ve paket dağıtımı 17. maddede açıktır;
-doğrulanan Linux çalışması tamamlanmış release değildir.
+Bu kaydedilmiş Linux sonuçları güncel Windows DLL/parser politikasını, platform
+paketlemesini veya tamamlanmış ürün release'ini doğrulamaz. Paket bulunabilirliğini
+ya da kabulü bu karşılaştırmadan çıkarmak yerine eşleşen dosyaları hedef ortamda kontrol edin.
 Production ayarlarını seçmeden önce ilgili kontrolleri kendi sınırlı kaynaklı
 test ortamınızda da tekrarlayın.
 

@@ -4,9 +4,10 @@
 
 Use these optional profiles to compare the same Java catalog service with the
 official Dubbo engine and the shared native engine. Neither profile changes the
-existing default provider. The new modules are **source-only and unreleased**;
-the focused warmed-load comparison passed. Coordinated platform distribution
-and combined product qualification remain separate work.
+existing default provider. These profiles are present in this `0.8.0` source
+checkout; build matching modules and native assets together. This guide does not
+establish published package availability. The recorded focused warmed-load comparison
+is separate from target-platform distribution and combined product qualification.
 
 ## Choose A Profile
 
@@ -144,7 +145,7 @@ service cap 4; its official executor keys are in its configuration resource.
 The sample defaults imply 5 MiB logical admitted-request capacity, not a 5 MiB
 slab or total RSS reservation. The adapter API's `Options.defaults` instead uses
 queue 64, implying 17 MiB. Full service/schema/parser and global admission bounds
-are in the [adapter guide](../../java-rust-dubbo/native-provider/README.md).
+are in the [adapter guide](https://github.com/esasmer-dou/java-rust-dubbo/blob/master/native-provider/README.md).
 
 ## Ownership, Monitoring And Troubleshooting
 
@@ -174,7 +175,7 @@ mutex remains for startup, stop and metrics, not per RPC. Per-connection writes
 use a Tokio async mutex: waiting does not block an OS thread, but complete frames
 are serialized, so a slow write can delay later responses on that connection.
 The separate consumer-response registry is not on this provider path.
-See the [adapter guide](../../java-rust-dubbo/native-provider/README.md) for metrics.
+See the [adapter guide](https://github.com/esasmer-dou/java-rust-dubbo/blob/master/native-provider/README.md) for metrics.
 
 | Symptom | Action |
 | --- | --- |
@@ -205,8 +206,10 @@ p99 at most 1.10x; every target cell reduced provider RSS, and final heap decrea
 There were no HTTP, body or socket errors. Each arm was warmed immediately at
 its measured concurrency. The previous plan warmed only at c16 before treating
 the first c64/c256 windows as steady. Limits, measurement duration, workers and
-queues were not increased. Current Windows DLL/parser-policy and package
-distribution remain item 17; the verified Linux work is not a completed release.
+queues were not increased. These recorded Linux results do not verify the current
+Windows DLL/parser policy, platform packaging or a completed product release.
+Check matching assets in the target environment rather than inferring availability
+or qualification from this comparison.
 
 Provider dispatch now binds the exact JNI method at startup. Per-call signature
 parsing, method lookup and the temporary native argument array are removed.
