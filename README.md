@@ -30,16 +30,17 @@ A plain Java Dubbo provider used by the Rust-Java REST consumer sample.
 
 Current versions: `rust-java-platform-parent:4.8.0`, `java-rust-dubbo:0.9.0`, `rest-sample-utility:0.5.0`, `rust-sample-model:0.5.0`.
 
-### Compact Segment Query (Source Checkout)
+### Compact Segment Query
 
 `CustomerQueryService.findCustomersBySegmentUtf8(long limit, byte[] segmentUtf8)`
 accepts a UTF-8 segment and returns the same customer JSON as the JSON-command
 method. The provider rejects malformed UTF-8, inputs over 4096 bytes and limits
 outside the Java `int` range. Java still validates the request and runs the same
 database query; results are not cached. The earlier JSON-command method remains.
-Build the updated utility contract and provider together before enabling
-`sample.consumer.segment-native-json=true` in the matching consumer. It is off by
-default. This is a source-only option, not a published performance guarantee.
+The contract is included in published `rest-sample-utility:0.5.0`, and the matching
+provider and consumer `0.8.0` JARs include the implementation. Use those matching
+artifacts before enabling `sample.consumer.segment-native-json=true` in the
+consumer. It is off by default. Availability is not a performance guarantee.
 
 ## Read This First
 

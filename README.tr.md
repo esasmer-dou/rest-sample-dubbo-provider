@@ -30,16 +30,18 @@ Rust-Java REST consumer sample'ının kullandığı sade bir Java Dubbo provider
 
 Kullanılan sürümler: `rust-java-platform-parent:4.8.0`, `java-rust-dubbo:0.9.0`, `rest-sample-utility:0.5.0`, `rust-sample-model:0.5.0`.
 
-### Sade Segment Sorgusu (Kaynak Kod)
+### Sade Segment Sorgusu
 
 `CustomerQueryService.findCustomersBySegmentUtf8(long limit, byte[] segmentUtf8)`
 metodu segment bilgisini UTF-8 olarak alır. Mevcut JSON komutuyla aynı müşteri
 JSON'unu döndürür. Hatalı UTF-8, 4096 byte üzerindeki veri ve Java `int` sınırını
 aşan limit reddedilir. Doğrulama ve veritabanı sorgusu Java'da kalır. Sonuç
 cache'lenmez. Önceki JSON komutu metodu da kullanılabilir.
-Consumer'da `sample.consumer.segment-native-json=true` seçmeden önce utility
-sözleşmesini ve provider'ı birlikte güncelleyin. Bu seçenek varsayılan olarak
-kapalıdır. Henüz yayımlanmış bir performans garantisi değildir.
+Kontrat yayımlanmış `rest-sample-utility:0.5.0` içinde, uygulaması ise eşleşen
+provider ve consumer `0.8.0` JAR'larında vardır. Consumer'da
+`sample.consumer.segment-native-json=true` seçmeden önce bu eşleşen artifact'leri
+kullanın. Bu seçenek varsayılan olarak kapalıdır. Bulunabilirlik, performans
+garantisi anlamına gelmez.
 
 ## Önce Bu Bölümü Okuyun
 
