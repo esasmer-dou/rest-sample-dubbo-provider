@@ -7,13 +7,13 @@
     <parent>
         <groupId>com.reactor</groupId>
         <artifactId>rust-java-platform-parent</artifactId>
-        <version>4.7.1</version>
+        <version>4.8.0</version>
         <relativePath/>
     </parent>
 
     <groupId>com.reactor.sample</groupId>
     <artifactId>rest-sample-dubbo-provider</artifactId>
-    <version>0.7.1</version>
+    <version>0.8.0</version>
     <packaging>jar</packaging>
 
     <name>rest-sample-dubbo-provider</name>
@@ -28,6 +28,7 @@
         <hikaricp.version>5.1.0</hikaricp.version>
         <log4j.version>2.19.0</log4j.version>
         <junit.version>5.10.2</junit.version>
+        <provider.build.directory>${project.basedir}/target</provider.build.directory>
         <provider.mainClass>com.reactor.sample.dubbo.provider.app.RestSampleDubboProviderApplication</provider.mainClass>
     </properties>
 
@@ -54,79 +55,7 @@
         <dependency>
             <groupId>com.reactor</groupId>
             <artifactId>java-rust-dubbo</artifactId>
-            <version>0.8.1</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.dubbo</groupId>
-            <artifactId>dubbo-rpc-dubbo</artifactId>
-            <version>${dubbo.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.apache.dubbo</groupId>
-                    <artifactId>dubbo-cluster</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.apache.dubbo</groupId>
-                    <artifactId>dubbo-native</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.dubbo</groupId>
-            <artifactId>dubbo-remoting-netty4</artifactId>
-            <version>${dubbo.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>io.netty</groupId>
-                    <artifactId>netty-handler-proxy</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>io.netty</groupId>
-                    <artifactId>netty-codec-http2</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>io.netty</groupId>
-                    <artifactId>netty-transport-classes-epoll</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>io.netty</groupId>
-                    <artifactId>netty-transport-native-epoll</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.apache.dubbo</groupId>
-                    <artifactId>dubbo-native</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>io.netty</groupId>
-            <artifactId>netty-handler</artifactId>
-            <version>${netty.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.mockito</groupId>
-                    <artifactId>mockito-core</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.reflections</groupId>
-                    <artifactId>reflections</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>com.google.code.gson</groupId>
-                    <artifactId>gson</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.dubbo</groupId>
-            <artifactId>dubbo-serialization-hessian2</artifactId>
-            <version>${dubbo.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.apache.dubbo</groupId>
-                    <artifactId>dubbo-native</artifactId>
-                </exclusion>
-            </exclusions>
+            <version>0.9.0</version>
         </dependency>
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
@@ -164,11 +93,307 @@
 
     <profiles>
         <profile>
+            <id>native-db-query-provider</id>
+            <properties>
+                <provider.build.directory>${project.basedir}/target/native-db-query-provider</provider.build.directory>
+                <provider.mainClass>com.reactor.sample.dubbo.provider.nativequery.NativeDbQueryProviderApplication</provider.mainClass>
+            </properties>
+            <dependencies>
+                <dependency><groupId>com.reactor</groupId><artifactId>java-rust-dubbo-native-provider</artifactId><version>0.9.0</version></dependency>
+                <dependency><groupId>com.reactor</groupId><artifactId>rust-java-jdbc</artifactId></dependency>
+                <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId><version>${postgresql.version}</version></dependency>
+                <dependency><groupId>com.zaxxer</groupId><artifactId>HikariCP</artifactId><version>${hikaricp.version}</version></dependency>
+            </dependencies>
+            <build><plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                        <proc>full</proc>
+                        <annotationProcessorPaths combine.self="override"><path><groupId>com.reactor</groupId><artifactId>java-rust-dubbo-native-provider-codegen</artifactId><version>0.9.0</version></path></annotationProcessorPaths>
+                        <annotationProcessors><annotationProcessor>com.reactor.rust.dubbo.nativeprovider.codegen.NativeProviderProcessor</annotationProcessor></annotationProcessors>
+                        <includes combine.self="override">
+                            <include>com/reactor/sample/dubbo/provider/nativequery/**</include>
+                            <include>com/reactor/sample/dubbo/provider/nativeprovider/NativeProviderConfiguration.java</include>
+                            <include>com/reactor/sample/dubbo/provider/db/PostgresCustomerRepository.java</include>
+                            <include>com/reactor/sample/dubbo/provider/service/CustomerQueryServiceImpl.java</include>
+                            <include>com/reactor/sample/dubbo/provider/service/CustomerQueryJsonWriter.java</include>
+                        </includes>
+                        <excludes combine.self="override"/>
+                        <testIncludes combine.self="override">
+                            <testInclude>com/reactor/sample/dubbo/provider/nativequery/**</testInclude>
+                            <testInclude>com/reactor/sample/dubbo/provider/service/CustomerQueryArgsTest.java</testInclude>
+                            <testInclude>com/reactor/sample/dubbo/provider/service/CustomerQueryJsonWriterTest.java</testInclude>
+                        </testIncludes>
+                        <testExcludes combine.self="override"/>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId><artifactId>maven-enforcer-plugin</artifactId><version>3.5.0</version>
+                    <executions><execution><id>native-query-dependency-isolation</id><phase>validate</phase><goals><goal>enforce</goal></goals>
+                        <configuration><rules><bannedDependencies><searchTransitive>true</searchTransitive><excludes>
+                            <exclude>org.apache.dubbo:*</exclude><exclude>io.netty:*</exclude><exclude>org.apache.zookeeper:*</exclude>
+                            <exclude>org.apache.curator:*</exclude><exclude>org.springframework:*</exclude><exclude>com.alibaba:hessian-lite</exclude>
+                        </excludes></bannedDependencies></rules></configuration>
+                    </execution></executions>
+                </plugin>
+            </plugins></build>
+        </profile>
+        <profile>
+            <id>native-provider</id>
+            <properties>
+                <provider.build.directory>${project.basedir}/target/native-provider</provider.build.directory>
+                <provider.mainClass>com.reactor.sample.dubbo.provider.nativeprovider.NativeProviderApplication</provider.mainClass>
+            </properties>
+            <dependencies>
+                <dependency>
+                    <groupId>com.reactor</groupId>
+                    <artifactId>java-rust-dubbo-native-provider</artifactId>
+                    <version>0.9.0</version>
+                </dependency>
+            </dependencies>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <configuration>
+                            <proc>full</proc>
+                            <annotationProcessorPaths combine.self="override">
+                                <path>
+                                    <groupId>com.reactor</groupId>
+                                    <artifactId>java-rust-dubbo-native-provider-codegen</artifactId>
+                                    <version>0.9.0</version>
+                                </path>
+                            </annotationProcessorPaths>
+                            <annotationProcessors>
+                                <annotationProcessor>com.reactor.rust.dubbo.nativeprovider.codegen.NativeProviderProcessor</annotationProcessor>
+                            </annotationProcessors>
+                            <includes combine.self="override">
+                                <include>com/reactor/sample/dubbo/provider/nativeprovider/**</include>
+                                <include>com/reactor/sample/dubbo/provider/service/StreamCatalogServiceImpl.java</include>
+                                <include>com/reactor/sample/dubbo/provider/service/CatalogJsonServiceImpl.java</include>
+                                <include>com/reactor/sample/dubbo/provider/service/CatalogPayloads.java</include>
+                            </includes>
+                            <excludes combine.self="override"/>
+                            <testIncludes combine.self="override">
+                                <testInclude>com/reactor/sample/dubbo/provider/nativeprovider/**</testInclude>
+                                <testInclude>com/reactor/sample/dubbo/provider/streamcatalog/StreamCatalogServiceTest.java</testInclude>
+                            </testIncludes>
+                            <testExcludes combine.self="override"/>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-enforcer-plugin</artifactId>
+                        <version>3.5.0</version>
+                        <executions>
+                            <execution>
+                                <id>native-provider-dependency-isolation</id>
+                                <phase>validate</phase>
+                                <goals><goal>enforce</goal></goals>
+                                <configuration>
+                                    <rules>
+                                        <bannedDependencies>
+                                            <searchTransitive>true</searchTransitive>
+                                            <excludes>
+                                                <exclude>org.apache.dubbo:*</exclude>
+                                                <exclude>io.netty:*</exclude>
+                                                <exclude>org.apache.zookeeper:*</exclude>
+                                                <exclude>org.apache.curator:*</exclude>
+                                                <exclude>org.springframework:*</exclude>
+                                                <exclude>com.reactor:java-rust-dubbo-spring-boot-starter</exclude>
+                                                <exclude>com.reactor:java-rust-dubbo-annotations</exclude>
+                                                <exclude>com.reactor:java-rust-dubbo-native-provider-codegen</exclude>
+                                            </excludes>
+                                        </bannedDependencies>
+                                    </rules>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>stream-catalog-provider</id>
+            <properties>
+                <provider.build.directory>${project.basedir}/target/stream-catalog-provider</provider.build.directory>
+                <provider.mainClass>com.reactor.sample.dubbo.provider.streamcatalog.StreamCatalogProviderApplication</provider.mainClass>
+            </properties>
+            <dependencies>
+                <dependency>
+                    <groupId>org.apache.dubbo</groupId>
+                    <artifactId>dubbo-rpc-dubbo</artifactId>
+                    <version>${dubbo.version}</version>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>org.apache.dubbo</groupId>
+                            <artifactId>dubbo-cluster</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>org.apache.dubbo</groupId>
+                            <artifactId>dubbo-native</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+                <dependency>
+                    <groupId>org.apache.dubbo</groupId>
+                    <artifactId>dubbo-remoting-netty4</artifactId>
+                    <version>${dubbo.version}</version>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>io.netty</groupId>
+                            <artifactId>netty-handler-proxy</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>io.netty</groupId>
+                            <artifactId>netty-codec-http2</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>io.netty</groupId>
+                            <artifactId>netty-transport-classes-epoll</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>io.netty</groupId>
+                            <artifactId>netty-transport-native-epoll</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>org.apache.dubbo</groupId>
+                            <artifactId>dubbo-native</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+                <dependency>
+                    <groupId>io.netty</groupId>
+                    <artifactId>netty-handler</artifactId>
+                    <version>${netty.version}</version>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>org.mockito</groupId>
+                            <artifactId>mockito-core</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>org.reflections</groupId>
+                            <artifactId>reflections</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>com.google.code.gson</groupId>
+                            <artifactId>gson</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+                <dependency>
+                    <groupId>org.apache.dubbo</groupId>
+                    <artifactId>dubbo-serialization-hessian2</artifactId>
+                    <version>${dubbo.version}</version>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>org.apache.dubbo</groupId>
+                            <artifactId>dubbo-native</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+            </dependencies>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <configuration>
+                            <includes combine.self="override">
+                                <include>com/reactor/sample/dubbo/provider/streamcatalog/**</include>
+                                <include>com/reactor/sample/dubbo/provider/service/StreamCatalogServiceImpl.java</include>
+                                <include>com/reactor/sample/dubbo/provider/service/CatalogJsonServiceImpl.java</include>
+                                <include>com/reactor/sample/dubbo/provider/service/CatalogPayloads.java</include>
+                            </includes>
+                            <excludes combine.self="override"/>
+                            <testIncludes combine.self="override">
+                                <testInclude>com/reactor/sample/dubbo/provider/streamcatalog/**</testInclude>
+                            </testIncludes>
+                            <testExcludes combine.self="override"/>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
             <id>full-provider</id>
             <activation>
                 <activeByDefault>true</activeByDefault>
             </activation>
             <dependencies>
+                <dependency>
+                    <groupId>org.apache.dubbo</groupId>
+                    <artifactId>dubbo-rpc-dubbo</artifactId>
+                    <version>${dubbo.version}</version>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>org.apache.dubbo</groupId>
+                            <artifactId>dubbo-cluster</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>org.apache.dubbo</groupId>
+                            <artifactId>dubbo-native</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+                <dependency>
+                    <groupId>org.apache.dubbo</groupId>
+                    <artifactId>dubbo-remoting-netty4</artifactId>
+                    <version>${dubbo.version}</version>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>io.netty</groupId>
+                            <artifactId>netty-handler-proxy</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>io.netty</groupId>
+                            <artifactId>netty-codec-http2</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>io.netty</groupId>
+                            <artifactId>netty-transport-classes-epoll</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>io.netty</groupId>
+                            <artifactId>netty-transport-native-epoll</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>org.apache.dubbo</groupId>
+                            <artifactId>dubbo-native</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+                <dependency>
+                    <groupId>io.netty</groupId>
+                    <artifactId>netty-handler</artifactId>
+                    <version>${netty.version}</version>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>org.mockito</groupId>
+                            <artifactId>mockito-core</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>org.reflections</groupId>
+                            <artifactId>reflections</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>com.google.code.gson</groupId>
+                            <artifactId>gson</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+                <dependency>
+                    <groupId>org.apache.dubbo</groupId>
+                    <artifactId>dubbo-serialization-hessian2</artifactId>
+                    <version>${dubbo.version}</version>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>org.apache.dubbo</groupId>
+                            <artifactId>dubbo-native</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
                 <dependency>
                     <groupId>org.apache.zookeeper</groupId>
                     <artifactId>zookeeper</artifactId>
@@ -204,6 +429,80 @@
             <properties>
                 <provider.mainClass>com.reactor.sample.dubbo.provider.app.CatalogStaticProviderApplication</provider.mainClass>
             </properties>
+            <dependencies>
+                <dependency>
+                    <groupId>org.apache.dubbo</groupId>
+                    <artifactId>dubbo-rpc-dubbo</artifactId>
+                    <version>${dubbo.version}</version>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>org.apache.dubbo</groupId>
+                            <artifactId>dubbo-cluster</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>org.apache.dubbo</groupId>
+                            <artifactId>dubbo-native</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+                <dependency>
+                    <groupId>org.apache.dubbo</groupId>
+                    <artifactId>dubbo-remoting-netty4</artifactId>
+                    <version>${dubbo.version}</version>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>io.netty</groupId>
+                            <artifactId>netty-handler-proxy</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>io.netty</groupId>
+                            <artifactId>netty-codec-http2</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>io.netty</groupId>
+                            <artifactId>netty-transport-classes-epoll</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>io.netty</groupId>
+                            <artifactId>netty-transport-native-epoll</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>org.apache.dubbo</groupId>
+                            <artifactId>dubbo-native</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+                <dependency>
+                    <groupId>io.netty</groupId>
+                    <artifactId>netty-handler</artifactId>
+                    <version>${netty.version}</version>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>org.mockito</groupId>
+                            <artifactId>mockito-core</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>org.reflections</groupId>
+                            <artifactId>reflections</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>com.google.code.gson</groupId>
+                            <artifactId>gson</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+                <dependency>
+                    <groupId>org.apache.dubbo</groupId>
+                    <artifactId>dubbo-serialization-hessian2</artifactId>
+                    <version>${dubbo.version}</version>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>org.apache.dubbo</groupId>
+                            <artifactId>dubbo-native</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+            </dependencies>
             <build>
                 <plugins>
                     <plugin>
@@ -234,6 +533,78 @@
                 <provider.mainClass>com.reactor.sample.dubbo.provider.app.DbQueryOnlyProviderApplication</provider.mainClass>
             </properties>
             <dependencies>
+                <dependency>
+                    <groupId>org.apache.dubbo</groupId>
+                    <artifactId>dubbo-rpc-dubbo</artifactId>
+                    <version>${dubbo.version}</version>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>org.apache.dubbo</groupId>
+                            <artifactId>dubbo-cluster</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>org.apache.dubbo</groupId>
+                            <artifactId>dubbo-native</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+                <dependency>
+                    <groupId>org.apache.dubbo</groupId>
+                    <artifactId>dubbo-remoting-netty4</artifactId>
+                    <version>${dubbo.version}</version>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>io.netty</groupId>
+                            <artifactId>netty-handler-proxy</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>io.netty</groupId>
+                            <artifactId>netty-codec-http2</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>io.netty</groupId>
+                            <artifactId>netty-transport-classes-epoll</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>io.netty</groupId>
+                            <artifactId>netty-transport-native-epoll</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>org.apache.dubbo</groupId>
+                            <artifactId>dubbo-native</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+                <dependency>
+                    <groupId>io.netty</groupId>
+                    <artifactId>netty-handler</artifactId>
+                    <version>${netty.version}</version>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>org.mockito</groupId>
+                            <artifactId>mockito-core</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>org.reflections</groupId>
+                            <artifactId>reflections</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>com.google.code.gson</groupId>
+                            <artifactId>gson</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+                <dependency>
+                    <groupId>org.apache.dubbo</groupId>
+                    <artifactId>dubbo-serialization-hessian2</artifactId>
+                    <version>${dubbo.version}</version>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>org.apache.dubbo</groupId>
+                            <artifactId>dubbo-native</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
                 <dependency>
                     <groupId>org.apache.zookeeper</groupId>
                     <artifactId>zookeeper</artifactId>
@@ -298,7 +669,7 @@
                 <repository><id>github-glowroot</id><url>https://maven.pkg.github.com/esasmer-dou/java-rust-glowroot-agent</url></repository>
             </repositories>
             <dependencies>
-                <dependency><groupId>com.reactor</groupId><artifactId>java-rust-glowroot-spring-runtime</artifactId><version>0.7.0</version></dependency>
+                <dependency><groupId>com.reactor</groupId><artifactId>java-rust-glowroot-spring-runtime</artifactId><version>0.7.1</version></dependency>
             </dependencies>
             <build><plugins><plugin>
                 <groupId>org.codehaus.mojo</groupId><artifactId>build-helper-maven-plugin</artifactId><version>3.6.0</version>
@@ -311,7 +682,24 @@
     </profiles>
 
     <build>
+        <directory>${provider.build.directory}</directory>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>com/reactor/sample/dubbo/provider/nativeprovider/**</exclude>
+                        <exclude>com/reactor/sample/dubbo/provider/nativequery/**</exclude>
+                        <exclude>com/reactor/sample/dubbo/provider/streamcatalog/**</exclude>
+                        <exclude>com/reactor/sample/dubbo/provider/service/StreamCatalogServiceImpl.java</exclude>
+                    </excludes>
+                    <testExcludes>
+                        <testExclude>com/reactor/sample/dubbo/provider/nativeprovider/**</testExclude>
+                        <testExclude>com/reactor/sample/dubbo/provider/streamcatalog/**</testExclude>
+                    </testExcludes>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>

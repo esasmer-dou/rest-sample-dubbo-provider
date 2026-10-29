@@ -2,7 +2,16 @@
 
 [English](README.md) | [Türkçe](README.tr.md)
 
+## Start With 0.8.0
+
+Separate native-provider and native DB-query profiles show bounded query/streaming paths. The normal provider profile remains available. Choose one build profile and keep consumer/model/interface versions aligned.
+
+[Usage guide](docs/functional-operations.md) · [Release notes](docs/RELEASE_NOTES_v0.8.0.md)
+
+
 New usage guide: [New usage examples](docs/functional-operations.md).
+
+Optional source profile: [Native provider without Netty or HessianLite](docs/NATIVE_PROVIDER.md).
 
 A plain Java Dubbo provider used by the Rust-Java REST consumer sample.
 
@@ -12,9 +21,32 @@ A plain Java Dubbo provider used by the Rust-Java REST consumer sample.
 - It can serve ready JSON or typed records.
 - The full profile uses PostgreSQL and HikariCP.
 
-Current versions: `rust-java-platform-parent:4.7.1`, `java-rust-dubbo:0.8.1`, `rest-sample-utility:0.4.4`, `rust-sample-model:0.4.4`.
+Current versions: `rust-java-platform-parent:4.8.0`, `java-rust-dubbo:0.9.0`, `rest-sample-utility:0.5.0`, `rust-sample-model:0.5.0`.
+
+### Compact Segment Query (Source Checkout)
+
+`CustomerQueryService.findCustomersBySegmentUtf8(long limit, byte[] segmentUtf8)`
+accepts a UTF-8 segment and returns the same customer JSON as the JSON-command
+method. The provider rejects malformed UTF-8, inputs over 4096 bytes and limits
+outside the Java `int` range. Java still validates the request and runs the same
+database query; results are not cached. The earlier JSON-command method remains.
+Build the updated utility contract and provider together before enabling
+`sample.consumer.segment-native-json=true` in the matching consumer. It is off by
+default. This is a source-only option, not a published performance guarantee.
 
 ## Read This First
+
+### Optional segment JSON contract in the current source
+
+`CustomerQueryService.findCustomersBySegmentJson(byte[])` accepts a small JSON
+request such as `{"segment":"standard","limit":5}`. It runs the same bounded
+SQL as the typed query and returns `{"customers":[...]}` with the same seven
+customer fields. Validation and data access remain Java business code. The
+consumer can forward the result through Rust without decoding a customer DTO list.
+The input limit is 4096 bytes. The existing typed method is not removed. Update
+the shared contract and both applications before enabling the consumer option
+`sample.consumer.segment-native-json=true`.
+
 
 Package only the service surface this provider exports. A runtime property can disable behavior,
 but it cannot remove already packaged Dubbo, database, model, or service classes.
@@ -35,20 +67,20 @@ Read the plain-Java boundary in [Glowroot Agent Use](#glowroot-agent-use) before
 
 ## Current Checkout
 
-This update aligns the platform with REST `4.7.1` and optional agent `0.7.0`.
+This update aligns the platform with REST `4.8.0` and optional agent `0.7.1`.
 Use the native file packaged with the dependency you selected. Do not mix older SO/DLL files.
 Business code, URLs and configuration keys stay the same. Telemetry remains disabled by default.
 The HTTP micro memory gate does not guarantee the same overhead for a database job or a richer profile.
 
-Version `0.7.1` uses platform parent `4.7.1`. Rebuild the application with the aligned
-dependencies. See [release notes](docs/RELEASE_NOTES_v0.7.1.md). Runtime settings and URLs are unchanged.
+Version `0.8.0` uses platform parent `4.8.0`. Rebuild the application with the aligned
+dependencies. See [release notes](docs/RELEASE_NOTES_v0.8.0.md). Runtime settings and URLs are unchanged.
 
 - Full, catalog-only, and DB-query-only artifacts stay isolated Maven profiles.
 - Workspace Docker builds install the exact aligned REST and Dubbo artifacts before packaging.
 - The provider remains plain Java and keeps explicit service registration.
 - Provider interfaces, SQL behavior, HikariCP settings, and optional ZooKeeper registration are
   unchanged.
-- Build-time platform and ABI checks are aligned with REST `4.7.1`.
+- Build-time platform and ABI checks are aligned with REST `4.8.0`.
 
 ## Explicit Provider Flow
 
@@ -100,7 +132,7 @@ java `
   "-Ddubbo.provider.bind-host=127.0.0.1" `
   "-Ddubbo.provider.port=20880" `
   "-Dreactor.dubbo.registry-enabled=false" `
-  -jar target/rest-sample-dubbo-provider-0.7.1.jar
+  -jar target/rest-sample-dubbo-provider-0.8.0.jar
 ```
 
 Use it with the consumer's `native-static-consumer` profile.
@@ -133,7 +165,7 @@ java `
   "-Dsample.db.password=reactor" `
   "-Dsample.db.schema-init=true" `
   "-Dsample.db.warmup=true" `
-  -jar target/rest-sample-dubbo-provider-0.7.1.jar
+  -jar target/rest-sample-dubbo-provider-0.8.0.jar
 ```
 
 The provider listens on `127.0.0.1:20880`.
@@ -146,6 +178,44 @@ reactor.dubbo.providers=127.0.0.1:20880
 ```
 
 ## What the Provider Exposes
+
+### Read-Only Database With Native Transport (Source Checkout)
+
+Use the new `native-db-query-provider` profile when this process only serves
+`CustomerQueryService`. It keeps PostgreSQL, Hikari and the Java business service.
+Generated codecs and Rust replace the official Dubbo/Netty transport. It does not
+export commands, catalog services or a ZooKeeper registration. The normal full
+provider remains unchanged. This profile is included in version `0.8.0`.
+
+```powershell
+mvn -B -ntp clean package -Pnative-db-query-provider
+java `
+  "-Dreactor.dubbo.native.path=C:/app/native/rust_dubbo-windows-x64.dll" `
+  "-Dsample.db.jdbc-url=jdbc:postgresql://127.0.0.1:15432/reactor_sample" `
+  "-Dsample.db.username=reactor" "-Dsample.db.password=reactor" `
+  -jar target/native-db-query-provider/rest-sample-dubbo-provider-0.8.0.jar
+```
+
+The database schema must exist. For Linux, use the matching ABI-3 `librust_dubbo.so`
+path instead of the Windows DLL. Configure the consumer with the same static address
+as the normal provider. The six query methods, interface name, records, lists and
+HTTP response shapes stay the same. Only call query routes with this profile.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `sample.native-provider.business-workers` | `2` | Bounds Java query execution threads. |
+| `sample.native-provider.service-max-concurrent` | `2` | Bounds concurrent query work. |
+| `sample.db.maximum-pool-size` | `2` | Bounds PostgreSQL connections. |
+| `sample.db.read-only` | `true` | Makes pooled DB sessions read-only. |
+| `sample.db.schema-init` | `false` | Leaves schema migration outside this process. |
+
+Keep the worker, service concurrency and DB pool limits aligned. Increasing an HTTP
+queue timeout does not make a saturated provider faster. Validate startup bursts,
+steady traffic and consumer peak RSS separately before selecting this profile.
+
+This profile is still an opt-in source preview, not the default production recipe.
+Its six query contracts pass live checks. The combined cold-load and consumer-memory
+acceptance is still open. Do not treat lower provider RSS as a guarantee for the full stack.
 
 The provider does not expose HTTP endpoints. It exports Dubbo interfaces.
 
@@ -268,7 +338,7 @@ $env:REACTOR_GLOWROOT_AGENT_ID="dubbo-provider-local"
 mvn -Pfull-provider,glowroot clean compile exec:java
 ```
 
-The profile adds `java-rust-glowroot-spring-runtime:0.7.0` and uses Dubbo library `0.8.1`.
+The profile adds `java-rust-glowroot-spring-runtime:0.7.1` and uses Dubbo library `0.9.0`.
 Include `full-provider` explicitly. Selecting another Maven profile can deactivate the default profile. This example is for the full provider; catalog-static and db-query images stay unchanged.
 
 `TelemetryProviderApplication` manages telemetry in the existing provider lifecycle. A startup dispatcher decorator reports methods as transaction type `Dubbo Provider`, name `interface#method`.
@@ -287,7 +357,7 @@ Use a valid `read:packages` token. SSH does not download Maven packages.
 Start with `micro`. The HTTP gate's 3 MiB steady paired-median bound is not
 a per-load memory guarantee for this application.
 
-[Setup and profile details](https://github.com/esasmer-dou/java-rust-glowroot-agent/blob/v0.7.0/docs/functional-operations.md)
+[Setup and profile details](https://github.com/esasmer-dou/java-rust-glowroot-agent/blob/v0.7.1/docs/functional-operations.md)
 
 ## Container Images
 
@@ -382,4 +452,11 @@ The server IDs in `~/.m2/settings.xml` must match the POM:
 - [Docker runbook](docker/README.md)
 - [Production settings](src/main/resources/config/production.properties)
 - [Advanced tuning](src/main/resources/config/advanced-tuning.properties)
-- [v0.7.1 release notes](docs/RELEASE_NOTES_v0.7.1.md)
+- [v0.8.0 release notes](docs/RELEASE_NOTES_v0.8.0.md)
+
+## Optional Native Provider
+
+The opt-in `native-provider` profile and same-service `stream-catalog-provider`
+official baseline are documented in [Native Provider](docs/NATIVE_PROVIDER.md).
+The focused warmed-load comparison passed. These modules remain source-only and
+do not replace the published default provider; platform distribution is separate.

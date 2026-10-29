@@ -8,6 +8,25 @@ import java.util.List;
 
 final class CustomerQueryJsonWriter extends SampleJsonWriter {
 
+    byte[] customerSummaries(List<SampleCustomer> customers) {
+        StringBuilder json = json(32 + customers.size() * 192);
+        json.append("{\"customers\":[");
+        for (int i = 0; i < customers.size(); i++) {
+            if (i != 0) json.append(',');
+            SampleCustomer row = customers.get(i);
+            json.append('{');
+            field(json, "id", row.id()).append(',');
+            nullableField(json, "customerNo", row.customerNo()).append(',');
+            nullableField(json, "fullName", row.fullName()).append(',');
+            nullableField(json, "segment", row.segment()).append(',');
+            nullableField(json, "email", row.email()).append(',');
+            nullableField(json, "status", row.status()).append(',');
+            nullableField(json, "updatedAt", row.updatedAt().toString());
+            json.append('}');
+        }
+        return utf8(json.append("]}"));
+    }
+
     byte[] databaseCustomers(List<SampleCustomer> customers) {
         StringBuilder json = json(512 + customers.size() * 160);
         json.append('{');
@@ -36,5 +55,10 @@ final class CustomerQueryJsonWriter extends SampleJsonWriter {
         stringField(json, "createdAt", customer.createdAt().toString()).append(',');
         stringField(json, "updatedAt", customer.updatedAt().toString());
         json.append('}');
+    }
+
+    private StringBuilder nullableField(StringBuilder json, String name, String value) {
+        quote(json, name).append(':');
+        return value == null ? json.append("null") : quote(json, value);
     }
 }
