@@ -1,19 +1,19 @@
 # rest-sample-dubbo-provider
 
-## Hazırlanan Düzeltme 0.8.1
+## 0.8.1 Sürümü
 
-Bu kaynak ağacı REST/platform 4.8.1 kullanır. ARM manifesti
-düzeltmesini içerir. İş kodu ve native ABI'ler değişmez. Yayım onayı bekleniyor;
-yayımlanmış sample sürümü hâlâ 0.8.0'dır.
+Bu kaynak ağacı REST/platform 4.8.1, Dubbo 0.9.1 ve model 0.5.1 kullanır. ARM manifesti
+düzeltmesini içerir. İş kodu ve native ABI'ler değişmez.
+Önceki 0.8.0 sürüm notları tarihsel kayıttır.
 [Düzeltme notları](docs/RELEASE_NOTES_v0.8.1.tr.md).
 
 [English](README.md) | [Türkçe](README.tr.md)
 
-## 0.8.0 İle Başlayın
+## 0.8.1 İle Başlayın
 
 Ayrı native-provider ve native DB-query profilleri, sınırlı sorgu ve streaming yollarını gösterir. Normal provider profili korunur. Tek derleme profili seçin. Consumer, model ve arayüz sürümlerini eşleştirin.
 
-[Kullanım rehberi](docs/functional-operations.md) · [Sürüm notları](docs/RELEASE_NOTES_v0.8.0.md)
+[Kullanım rehberi](docs/functional-operations.md) · [Sürüm notları](docs/RELEASE_NOTES_v0.8.1.tr.md)
 
 
 İsteğe bağlı kaynak profili: [Netty ve HessianLite gerektirmeyen native provider](docs/NATIVE_PROVIDER.tr.md).
@@ -28,7 +28,7 @@ Rust-Java REST consumer sample'ının kullandığı sade bir Java Dubbo provider
 - Hazır JSON veya typed record dönebilir.
 - Full profile PostgreSQL ve HikariCP kullanır.
 
-Kullanılan sürümler: `rust-java-platform-parent:4.8.0`, `java-rust-dubbo:0.9.0`, `rest-sample-utility:0.5.0`, `rust-sample-model:0.5.0`.
+Kullanılan sürümler: `rust-java-platform-parent:4.8.1`, `java-rust-dubbo:0.9.1`, `rest-sample-utility:0.5.1`, `rust-sample-model:0.5.1`.
 
 ### Sade Segment Sorgusu
 
@@ -77,19 +77,19 @@ sınırını okuyun.
 
 ## Güncel Kaynak Ayarları
 
-Bu güncelleme, platformu REST `4.8.0` ve isteğe bağlı agent `0.7.1` ile eşler.
+Bu güncelleme, platformu REST `4.8.1` ve isteğe bağlı agent `0.7.1` ile eşler.
 Seçtiğiniz bağımlılığın native dosyasını kullanın. Eski SO/DLL dosyalarını karıştırmayın.
 İş kodu, URL'ler ve ayar anahtarları değişmez. Telemetri varsayılan olarak kapalıdır.
 HTTP micro bellek testi, veritabanı işinde veya daha ayrıntılı profilde aynı maliyeti garanti etmez.
 
-`0.8.0` sürümü platform parent `4.8.0` kullanır. Uygulamayı hizalanmış bağımlılıklarla
-yeniden derleyin. [Sürüm notlarını](docs/RELEASE_NOTES_v0.8.0.tr.md) okuyun. Runtime ayarları ve adresler değişmez.
+`0.8.1` sürümü platform parent `4.8.1` kullanır. Uygulamayı hizalanmış bağımlılıklarla
+yeniden derleyin. [Sürüm notlarını](docs/RELEASE_NOTES_v0.8.1.tr.md) okuyun. Runtime ayarları ve adresler değişmez.
 
 - Full, yalnız katalog ve yalnız DB sorgu artifact'leri ayrı Maven profile olarak kalır.
 - Workspace Docker build, paketlemeden önce uyumlu REST ve Dubbo artifact'lerini kurar.
 - Provider sade Java kullanmaya ve service'leri açıkça kaydetmeye devam eder.
 - Provider interface'leri, SQL davranışı, HikariCP ayarları ve opsiyonel ZooKeeper kaydı değişmedi.
-- Build sırasındaki platform ve ABI kontrolleri REST `4.8.0` ile hizalandı.
+- Build sırasındaki platform ve ABI kontrolleri REST `4.8.1` ile hizalandı.
 
 ## Açık Provider Akışı
 
@@ -141,7 +141,7 @@ java `
   "-Ddubbo.provider.bind-host=127.0.0.1" `
   "-Ddubbo.provider.port=20880" `
   "-Dreactor.dubbo.registry-enabled=false" `
-  -jar target/rest-sample-dubbo-provider-0.8.0.jar
+  -jar target/rest-sample-dubbo-provider-0.8.1.jar
 ```
 
 Bu provider'ı consumer'ın `native-static-consumer` profile'ı ile kullanın.
@@ -174,7 +174,7 @@ java `
   "-Dsample.db.password=reactor" `
   "-Dsample.db.schema-init=true" `
   "-Dsample.db.warmup=true" `
-  -jar target/rest-sample-dubbo-provider-0.8.0.jar
+  -jar target/rest-sample-dubbo-provider-0.8.1.jar
 ```
 
 Provider `127.0.0.1:20880` adresinde çalışır.
@@ -194,7 +194,7 @@ Bu süreç yalnız `CustomerQueryService` sunacaksa yeni `native-db-query-provid
 profilini seçebilirsiniz. PostgreSQL, Hikari ve Java iş servisi korunur. Resmi
 Dubbo/Netty taşıması yerine üretilmiş codec'ler ve Rust kullanılır. Command ve
 katalog servisleri yayınlanmaz. ZooKeeper kaydı yapılmaz. Normal tam provider
-değişmez. Profil bu `0.8.0` kaynak kodunda vardır. Eşleşen kaynak kodu ve native
+değişmez. Profil bu `0.8.1` kaynak kodunda vardır. Eşleşen kaynak kodu ve native
 kütüphaneyi derleyin; bu rehber yayımlanmış paketin bulunabilirliğini doğrulamaz.
 
 ```powershell
@@ -203,7 +203,7 @@ java `
   "-Dreactor.dubbo.native.path=C:/app/native/rust_dubbo-windows-x64.dll" `
   "-Dsample.db.jdbc-url=jdbc:postgresql://127.0.0.1:15432/reactor_sample" `
   "-Dsample.db.username=reactor" "-Dsample.db.password=reactor" `
-  -jar target/native-db-query-provider/rest-sample-dubbo-provider-0.8.0.jar
+  -jar target/native-db-query-provider/rest-sample-dubbo-provider-0.8.1.jar
 ```
 
 Veritabanı şeması önceden hazırlanmış olmalıdır. Linux'ta Windows DLL yerine aynı
@@ -211,7 +211,7 @@ ABI-3 sürümüne ait `librust_dubbo.so` yolunu verin. Consumer'ın static adres
 değişmez. Altı sorgu metodu, interface adı, record ve list dönüşleri, HTTP yanıt
 biçimleri korunur. Bu profille yalnız sorgu rotalarını çağırın.
 
-**UNRELEASED (yayımlanmadı), consumer için 0.8.0 yayını sonrası checkout değişikliği:** aşağıdaki readiness
+**Consumer 0.8.1:** aşağıdaki readiness
 seçimi ve katalog koşulu yayımlanmış `0.8.0` sürümünden sonra eklendi. Consumer
 checkout'unu yeniden derleyin; önceden indirilmiş `0.8.0` consumer jar bu ayarları
 ve query-only ayar dosyasını desteklemez.
@@ -378,7 +378,7 @@ $env:REACTOR_GLOWROOT_AGENT_ID="dubbo-provider-local"
 mvn -Pfull-provider,glowroot clean compile exec:java
 ```
 
-Profil, `java-rust-glowroot-spring-runtime:0.7.1` paketini ekler. Dubbo kütüphanesi `0.9.0` kullanılır.
+Profil, `java-rust-glowroot-spring-runtime:0.7.1` paketini ekler. Dubbo kütüphanesi `0.9.1` kullanılır.
 `full-provider` profilini komuta mutlaka ekleyin. Açık profil seçimi varsayılan profili kapatabilir. Bu örnek tam provider içindir; catalog-static ve db-query image'ları değişmez.
 
 `TelemetryProviderApplication` agent'ı mevcut provider yaşam döngüsüne bağlar. Başlangıçta bağlanan dispatcher gözlemi, servisleri Collector UI'da `Dubbo Provider` türünde `interface#method` adıyla gösterir.

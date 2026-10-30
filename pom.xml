@@ -55,7 +55,7 @@
         <dependency>
             <groupId>com.reactor</groupId>
             <artifactId>java-rust-dubbo</artifactId>
-            <version>0.9.0</version>
+            <version>0.9.1</version>
         </dependency>
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
@@ -99,7 +99,7 @@
                 <provider.mainClass>com.reactor.sample.dubbo.provider.nativequery.NativeDbQueryProviderApplication</provider.mainClass>
             </properties>
             <dependencies>
-                <dependency><groupId>com.reactor</groupId><artifactId>java-rust-dubbo-native-provider</artifactId><version>0.9.0</version></dependency>
+                <dependency><groupId>com.reactor</groupId><artifactId>java-rust-dubbo-native-provider</artifactId><version>0.9.1</version></dependency>
                 <dependency><groupId>com.reactor</groupId><artifactId>rust-java-jdbc</artifactId></dependency>
                 <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId><version>${postgresql.version}</version></dependency>
                 <dependency><groupId>com.zaxxer</groupId><artifactId>HikariCP</artifactId><version>${hikaricp.version}</version></dependency>
@@ -109,7 +109,7 @@
                     <groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId>
                     <configuration>
                         <proc>full</proc>
-                        <annotationProcessorPaths combine.self="override"><path><groupId>com.reactor</groupId><artifactId>java-rust-dubbo-native-provider-codegen</artifactId><version>0.9.0</version></path></annotationProcessorPaths>
+                        <annotationProcessorPaths combine.self="override"><path><groupId>com.reactor</groupId><artifactId>java-rust-dubbo-native-provider-codegen</artifactId><version>0.9.1</version></path></annotationProcessorPaths>
                         <annotationProcessors><annotationProcessor>com.reactor.rust.dubbo.nativeprovider.codegen.NativeProviderProcessor</annotationProcessor></annotationProcessors>
                         <includes combine.self="override">
                             <include>com/reactor/sample/dubbo/provider/nativequery/**</include>
@@ -148,7 +148,7 @@
                 <dependency>
                     <groupId>com.reactor</groupId>
                     <artifactId>java-rust-dubbo-native-provider</artifactId>
-                    <version>0.9.0</version>
+                    <version>0.9.1</version>
                 </dependency>
             </dependencies>
             <build>
@@ -162,7 +162,7 @@
                                 <path>
                                     <groupId>com.reactor</groupId>
                                     <artifactId>java-rust-dubbo-native-provider-codegen</artifactId>
-                                    <version>0.9.0</version>
+                                    <version>0.9.1</version>
                                 </path>
                             </annotationProcessorPaths>
                             <annotationProcessors>
