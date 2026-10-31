@@ -2,12 +2,59 @@
 
 ## Version 0.8.1
 
-This checkout uses REST/platform 4.8.1, Dubbo 0.9.1 and model 0.5.1. It includes
+Published sample 0.8.1 uses REST/platform 4.8.1, Dubbo 0.9.1 and model 0.5.1. It includes
 the ARM provenance packaging fix without changing business logic or native ABIs.
 Use the aligned 0.8.1 artifacts; earlier 0.8.0 release notes remain historical.
 [Patch notes](docs/RELEASE_NOTES_v0.8.1.md).
 
 [English](README.md) | [Türkçe](README.tr.md)
+
+## Compose
+
+**Unpublished source workflow.** This topology and the new helper-based examples
+below require coordinated checkout changes, not the published sample `0.8.1` alone.
+Matching REST/platform, cache and Dubbo source dependencies must already be installed
+or resolvable. `--prepare` / `-Prepare` packages the samples; it does not build those
+framework dependencies. New JNI exports also need matching REST native resources;
+existing ABI numbers are unchanged. Kubernetes validation is not Compose-engine
+execution proof, and this recipe does not establish ARM hardware qualification.
+
+The shared topology is in sibling `rest-sample-cache-reader/docker/compose/`;
+see the [complete guide](https://github.com/esasmer-dou/rest-sample-cache-reader/blob/master/README.md#compose).
+Clone all four samples under one parent with their repository names. Prerequisites:
+Linux/amd64 Docker Engine, Compose v2 with `--wait`, JDK 21/Maven and resolvable
+aligned dependencies; Bash needs `curl`, `jq`, `timeout`, or use PowerShell 7.
+Run from this repository's root:
+
+```bash
+bash ../rest-sample-cache-reader/scripts/verify-compose-topology.sh --prepare
+# Alternative: native-provider + matching native-static-consumer
+bash ../rest-sample-cache-reader/scripts/verify-compose-topology.sh --prepare --native-provider
+```
+
+PowerShell: `pwsh -File ../rest-sample-cache-reader/scripts/verify-compose-topology.ps1 -Prepare`
+(add `-NativeProvider` for the alternative). Preparation builds all four samples
+with tests skipped and copies runtime dependencies. Default `full-provider` serves
+customer query/command RPCs against seeded PostgreSQL; `full-dubbo-consumer` exposes
+HTTP at `127.0.0.1:18082`, reader at `127.0.0.1:18081`. Redis 7 and writer complete
+the projection pipeline. All six containers have 1 CPU / 128 MiB limits; apps use
+OpenJ9 Java 21/JNI. Provider has no HTTP health API: TCP readiness is strengthened
+by consumer RPC readiness at `/app/ready`.
+
+**Native mode is catalog-only**, using `CatalogJsonService` version `0.0.0`, not
+the full consumer's `NestedCatalogService`. It needs `native-static-consumer` plus
+the unchanged sibling ABI-3 library/resources documented in the guide. It does not
+replace customer query/command RPCs. Full smoke covers POST/PATCH-to-provider-to-DB
+and DB-to-writer-to-fenced-Redis-to-reader. Native smoke covers catalog RPC and that
+changing cache pipeline using direct SQL, explicitly bypassing the provider; no
+customer RPC or streaming proof is claimed.
+
+Evidence, including five bounded RSS samples, is in the shared parent's `.tmp/wp3-*`.
+Default cleanup removes only the unique smoke stack/volume; `--keep` / `-Keep`
+retains it. Failures return nonzero; inspect `containers.log` and `result.properties`.
+The idiomatic full provider keeps SQL/business contracts explicit; the narrower
+native profile is not an equivalent benchmark workload. This single-DB/Redis demo
+is not HA. Neither limits nor this recipe prove runtime RSS, throughput or p99.
 
 ## Start With 0.8.1
 

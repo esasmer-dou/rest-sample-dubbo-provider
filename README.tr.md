@@ -2,12 +2,60 @@
 
 ## 0.8.1 Sürümü
 
-Bu kaynak ağacı REST/platform 4.8.1, Dubbo 0.9.1 ve model 0.5.1 kullanır. ARM manifesti
+Yayımlanmış sample 0.8.1, REST/platform 4.8.1, Dubbo 0.9.1 ve model 0.5.1 kullanır. ARM manifesti
 düzeltmesini içerir. İş kodu ve native ABI'ler değişmez.
 Önceki 0.8.0 sürüm notları tarihsel kayıttır.
 [Düzeltme notları](docs/RELEASE_NOTES_v0.8.1.tr.md).
 
 [English](README.md) | [Türkçe](README.tr.md)
+
+## Compose
+
+**Henüz yayımlanmamış kaynak akışı.** Bu topoloji ve aşağıdaki yeni yardımcı API
+örnekleri birlikte güncellenmiş kaynakları gerektirir; yayımlanmış sample `0.8.1`
+tek başına yeterli değildir. Uyumlu REST/platform, cache ve Dubbo kaynak bağımlılıkları
+önceden kurulmuş veya çözülebilir olmalıdır. `--prepare` / `-Prepare` sample'ları
+paketler; bu framework bağımlılıklarını derlemez. Yeni JNI export'ları için eşleşen
+REST native kaynakları da gerekir; mevcut ABI numaraları değişmez. Kubernetes
+doğrulaması Compose motorunun çalıştırıldığına kanıt değildir; bu tarif ARM
+donanımının doğrulandığı anlamına da gelmez.
+
+Ortak topoloji, yan yana alınmış `rest-sample-cache-reader/docker/compose/` içindedir;
+[tam rehberi](https://github.com/esasmer-dou/rest-sample-cache-reader/blob/master/README.tr.md#compose)
+inceleyin. Dört sample'ı depo adlarını koruyarak aynı üst dizine alın.
+Linux/amd64 Docker Engine, `--wait` destekli Compose v2, JDK 21/Maven ve çözülebilen
+uyumlu bağımlılıklar gerekir. Bash için `curl`, `jq`, `timeout`; alternatif olarak
+PowerShell 7 kullanın. Bu deponun kök dizininden:
+
+```bash
+bash ../rest-sample-cache-reader/scripts/verify-compose-topology.sh --prepare
+# Alternatif: native-provider + eşleşen native-static-consumer
+bash ../rest-sample-cache-reader/scripts/verify-compose-topology.sh --prepare --native-provider
+```
+
+PowerShell: `pwsh -File ../rest-sample-cache-reader/scripts/verify-compose-topology.ps1 -Prepare`
+(alternatif için `-NativeProvider` ekleyin). Hazırlık, dört sample'ı testleri
+çalıştırmadan derler ve runtime bağımlılıklarını kopyalar. Varsayılan `full-provider`,
+seed içeren PostgreSQL üzerinde müşteri query/command RPC'lerini sunar.
+`full-dubbo-consumer` HTTP adresi `127.0.0.1:18082`, reader adresi `127.0.0.1:18081`
+olur. Redis 7 ve writer projection hattını tamamlar. Altı container'ın her biri
+1 CPU / 128 MiB ile sınırlıdır; uygulamalar OpenJ9 Java 21/JNI kullanır. Provider
+HTTP sağlık API'si açmaz; TCP kontrolünü consumer'ın `/app/ready` RPC kontrolü güçlendirir.
+
+**Native mod yalnız katalog içindir**; full consumer'ın `NestedCatalogService`
+sözleşmesi yerine `CatalogJsonService`, sürüm `0.0.0` kullanır. Eşleşen
+`native-static-consumer` ve rehberdeki değiştirilmemiş yan yana ABI-3 kaynakları
+gerekir. Müşteri query/command RPC'lerinin yerine geçmez. Full smoke,
+POST/PATCH-provider-DB ve DB-writer-fenced Redis-reader akışlarını denetler.
+Native smoke, katalog RPC'sini ve değişen aynı cache hattını doğrudan SQL ile
+denetler; provider bilinçli olarak atlanır. Müşteri RPC veya streaming kanıtı iddia edilmez.
+
+Beş sınırlı RSS örneği dahil kanıtlar ortak üst dizinin `.tmp/wp3-*` alanındadır.
+Varsayılan cleanup yalnız benzersiz smoke stack/volume'ünü siler; `--keep` / `-Keep`
+korur. Hata sıfırdan farklı exit üretir; `containers.log` ve `result.properties`
+dosyalarını inceleyin. Doğal full provider örneği SQL/iş kontratlarını açık tutar;
+daha dar native profil eşdeğer benchmark yükü değildir. Tek DB/Redis kullanan demo
+HA değildir. Limitler ve tarif runtime RSS, throughput veya p99 kanıtı sayılmaz.
 
 ## 0.8.1 İle Başlayın
 
