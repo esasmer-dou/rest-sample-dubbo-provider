@@ -471,6 +471,11 @@ The server IDs in `~/.m2/settings.xml` must match the POM:
 ```xml
 <servers>
   <server>
+    <id>github-rust-java-rest</id>
+    <username>YOUR_GITHUB_USERNAME</username>
+    <password>${env.GITHUB_PACKAGES_TOKEN}</password>
+  </server>
+  <server>
     <id>github-java-rust-dubbo</id>
     <username>YOUR_GITHUB_USERNAME</username>
     <password>${env.GITHUB_PACKAGES_TOKEN}</password>

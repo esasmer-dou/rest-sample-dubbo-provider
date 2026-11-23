@@ -84,6 +84,10 @@
 
     <repositories>
         <repository>
+            <id>github-rust-java-rest</id>
+            <url>https://maven.pkg.github.com/esasmer-dou/rust-java-rest</url>
+        </repository>
+        <repository>
             <id>github-java-rust-dubbo</id>
             <url>https://maven.pkg.github.com/esasmer-dou/java-rust-dubbo</url>
         </repository>

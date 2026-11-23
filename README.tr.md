@@ -472,6 +472,11 @@ GitHub Packages için `read:packages` yetkili token gerekir. Token'ın private o
 ```xml
 <servers>
   <server>
+    <id>github-rust-java-rest</id>
+    <username>GITHUB_KULLANICI_ADI</username>
+    <password>${env.GITHUB_PACKAGES_TOKEN}</password>
+  </server>
+  <server>
     <id>github-java-rust-dubbo</id>
     <username>GITHUB_KULLANICI_ADI</username>
     <password>${env.GITHUB_PACKAGES_TOKEN}</password>
