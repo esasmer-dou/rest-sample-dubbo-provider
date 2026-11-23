@@ -1,16 +1,16 @@
 # rest-sample-dubbo-provider
 
-## 0.8.2 Sürümü
+## 0.8.3 Sürümü
 
-Sample `0.8.2`, REST/platform `4.8.2`, Dubbo `0.9.2` ve model `0.5.2` kullanır.
+Sample `0.8.3`, REST/platform `4.9.0`, Dubbo `0.9.2` ve model `0.5.3` kullanır.
 Java iş kodu ve native ABI'ler değişmez. Eşleşen bağımlılıkları birlikte güncelleyin.
-[Geçiş ve kullanım notları](docs/RELEASE_NOTES_v0.8.2.tr.md).
+[Geçiş ve kullanım notları](docs/RELEASE_NOTES_v0.8.3.tr.md).
 
 [English](README.md) | [Türkçe](README.tr.md)
 
 ## Compose
 
-Bu örnek 0.8.2 sürümünde REST/platform 4.8.2 ve ilgili cache veya Dubbo 0.9.2 paketiyle çalışır. Aşağıdaki Compose komutları yerel geliştirme içindir. Yayın doğrulaması EmaTech üzerinde yapılır; Windows ve ARM çalıştırma kontrolleri ayrı uyumluluk testleridir. Bir platformun derlenmiş olması, o platformda yük testi yapıldığı anlamına gelmez.
+Bu örnek 0.8.3 sürümünde REST/platform 4.9.0 ve ilgili cache veya Dubbo 0.9.2 paketiyle çalışır. Aşağıdaki Compose komutları yerel geliştirme içindir. Yayın doğrulaması EmaTech üzerinde yapılır; Windows ve ARM çalıştırma kontrolleri ayrı uyumluluk testleridir. Bir platformun derlenmiş olması, o platformda yük testi yapıldığı anlamına gelmez.
 
 Ortak topoloji, yan yana alınmış `rest-sample-cache-reader/docker/compose/` içindedir;
 [tam rehberi](https://github.com/esasmer-dou/rest-sample-cache-reader/blob/master/README.tr.md#compose)
@@ -49,11 +49,11 @@ dosyalarını inceleyin. Doğal full provider örneği SQL/iş kontratlarını a
 daha dar native profil eşdeğer benchmark yükü değildir. Tek DB/Redis kullanan demo
 HA değildir. Limitler ve tarif runtime RSS, throughput veya p99 kanıtı sayılmaz.
 
-## 0.8.2 İle Başlayın
+## 0.8.3 İle Başlayın
 
 Ayrı native-provider ve native DB-query profilleri, sınırlı sorgu ve streaming yollarını gösterir. Normal provider profili korunur. Tek derleme profili seçin. Consumer, model ve arayüz sürümlerini eşleştirin.
 
-[Kullanım rehberi](docs/functional-operations.md) · [Sürüm notları](docs/RELEASE_NOTES_v0.8.2.tr.md)
+[Kullanım rehberi](docs/functional-operations.md) · [Sürüm notları](docs/RELEASE_NOTES_v0.8.3.tr.md)
 
 
 İsteğe bağlı kaynak profili: [Netty ve HessianLite gerektirmeyen native provider](docs/NATIVE_PROVIDER.tr.md).
@@ -68,7 +68,7 @@ Rust-Java REST consumer sample'ının kullandığı sade bir Java Dubbo provider
 - Hazır JSON veya typed record dönebilir.
 - Full profile PostgreSQL ve HikariCP kullanır.
 
-Kullanılan sürümler: `rust-java-platform-parent:4.8.2`, `java-rust-dubbo:0.9.2`, `rest-sample-utility:0.5.2`, `rust-sample-model:0.5.2`.
+Kullanılan sürümler: `rust-java-platform-parent:4.9.0`, `java-rust-dubbo:0.9.2`, `rest-sample-utility:0.5.3`, `rust-sample-model:0.5.3`.
 
 ### Sade Segment Sorgusu
 
@@ -117,19 +117,19 @@ sınırını okuyun.
 
 ## Güncel Kaynak Ayarları
 
-Bu güncelleme, platformu REST `4.8.2` ve isteğe bağlı agent `0.7.1` ile eşler.
+Bu güncelleme, platformu REST `4.9.0` ve isteğe bağlı agent `0.7.1` ile eşler.
 Seçtiğiniz bağımlılığın native dosyasını kullanın. Eski SO/DLL dosyalarını karıştırmayın.
 İş kodu, URL'ler ve ayar anahtarları değişmez. Telemetri varsayılan olarak kapalıdır.
 HTTP micro bellek testi, veritabanı işinde veya daha ayrıntılı profilde aynı maliyeti garanti etmez.
 
-`0.8.2` sürümü platform parent `4.8.2` kullanır. Uygulamayı hizalanmış bağımlılıklarla
-yeniden derleyin. [Sürüm notlarını](docs/RELEASE_NOTES_v0.8.2.tr.md) okuyun. Runtime ayarları ve adresler değişmez.
+`0.8.3` sürümü platform parent `4.9.0` kullanır. Uygulamayı hizalanmış bağımlılıklarla
+yeniden derleyin. [Sürüm notlarını](docs/RELEASE_NOTES_v0.8.3.tr.md) okuyun. Runtime ayarları ve adresler değişmez.
 
 - Full, yalnız katalog ve yalnız DB sorgu artifact'leri ayrı Maven profile olarak kalır.
 - Workspace Docker build, paketlemeden önce uyumlu REST ve Dubbo artifact'lerini kurar.
 - Provider sade Java kullanmaya ve service'leri açıkça kaydetmeye devam eder.
 - Provider interface'leri, SQL davranışı, HikariCP ayarları ve opsiyonel ZooKeeper kaydı değişmedi.
-- Build sırasındaki platform ve ABI kontrolleri REST `4.8.2` ile hizalandı.
+- Build sırasındaki platform ve ABI kontrolleri REST `4.9.0` ile hizalandı.
 
 ## Açık Provider Akışı
 
@@ -181,7 +181,7 @@ java `
   "-Ddubbo.provider.bind-host=127.0.0.1" `
   "-Ddubbo.provider.port=20880" `
   "-Dreactor.dubbo.registry-enabled=false" `
-  -jar target/rest-sample-dubbo-provider-0.8.2.jar
+  -jar target/rest-sample-dubbo-provider-0.8.3.jar
 ```
 
 Bu provider'ı consumer'ın `native-static-consumer` profile'ı ile kullanın.
@@ -214,7 +214,7 @@ java `
   "-Dsample.db.password=reactor" `
   "-Dsample.db.schema-init=true" `
   "-Dsample.db.warmup=true" `
-  -jar target/rest-sample-dubbo-provider-0.8.2.jar
+  -jar target/rest-sample-dubbo-provider-0.8.3.jar
 ```
 
 Provider `127.0.0.1:20880` adresinde çalışır.
@@ -234,7 +234,7 @@ Bu süreç yalnız `CustomerQueryService` sunacaksa yeni `native-db-query-provid
 profilini seçebilirsiniz. PostgreSQL, Hikari ve Java iş servisi korunur. Resmi
 Dubbo/Netty taşıması yerine üretilmiş codec'ler ve Rust kullanılır. Command ve
 katalog servisleri yayınlanmaz. ZooKeeper kaydı yapılmaz. Normal tam provider
-değişmez. Profil bu `0.8.2` kaynak kodunda vardır. Eşleşen kaynak kodu ve native
+değişmez. Profil bu `0.8.3` kaynak kodunda vardır. Eşleşen kaynak kodu ve native
 kütüphaneyi derleyin; bu rehber yayımlanmış paketin bulunabilirliğini doğrulamaz.
 
 ```powershell
@@ -243,7 +243,7 @@ java `
   "-Dreactor.dubbo.native.path=C:/app/native/rust_dubbo-windows-x64.dll" `
   "-Dsample.db.jdbc-url=jdbc:postgresql://127.0.0.1:15432/reactor_sample" `
   "-Dsample.db.username=reactor" "-Dsample.db.password=reactor" `
-  -jar target/native-db-query-provider/rest-sample-dubbo-provider-0.8.2.jar
+  -jar target/native-db-query-provider/rest-sample-dubbo-provider-0.8.3.jar
 ```
 
 Veritabanı şeması önceden hazırlanmış olmalıdır. Linux'ta Windows DLL yerine aynı

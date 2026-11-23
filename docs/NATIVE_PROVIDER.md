@@ -4,7 +4,7 @@
 
 Use these optional profiles to compare the same Java catalog service with the
 official Dubbo engine and the shared native engine. Neither profile changes the
-existing default provider. These profiles are present in this `0.8.2` source
+existing default provider. These profiles are present in this `0.8.3` source
 checkout; build matching modules and native assets together. This guide does not
 establish published package availability. The recorded focused warmed-load comparison
 is separate from target-platform distribution and combined product qualification.
@@ -52,7 +52,7 @@ on one host; do not treat competing processes on one CPU as an isolated load tes
 java -Xms16m -Xmx48m -XX:ActiveProcessorCount=1 \
   -Dsample.provider.engine=official -Dreactor.dubbo.registry-enabled=false \
   -Ddubbo.provider.port=20880 \
-  -jar rest-sample-dubbo-provider/target/stream-catalog-provider/rest-sample-dubbo-provider-0.8.2.jar
+  -jar rest-sample-dubbo-provider/target/stream-catalog-provider/rest-sample-dubbo-provider-0.8.3.jar
 ```
 
 Set `NATIVE_LIB` to the current verified SO, not an older packaged library:
@@ -62,7 +62,7 @@ NATIVE_LIB=/opt/reactor/native/librust_dubbo.so
 java -Xms16m -Xmx48m -XX:ActiveProcessorCount=1 \
   -Dsample.provider.engine=native -Dreactor.dubbo.registry-enabled=false \
   -Ddubbo.provider.port=20881 "-Dreactor.dubbo.native.path=$NATIVE_LIB" \
-  -jar rest-sample-dubbo-provider/target/native-provider/rest-sample-dubbo-provider-0.8.2.jar
+  -jar rest-sample-dubbo-provider/target/native-provider/rest-sample-dubbo-provider-0.8.3.jar
 ```
 
 JVM options do not enforce container CPU/RSS limits. Restrict the listener to the

@@ -1,16 +1,16 @@
 # rest-sample-dubbo-provider
 
-## Version 0.8.2
+## Version 0.8.3
 
-Sample `0.8.2` uses REST/platform `4.8.2`, Dubbo `0.9.2` and model `0.5.2`.
+Sample `0.8.3` uses REST/platform `4.9.0`, Dubbo `0.9.2` and model `0.5.3`.
 Java business code and native ABIs are unchanged. Upgrade the aligned dependencies together.
-[Upgrade and usage notes](docs/RELEASE_NOTES_v0.8.2.md).
+[Upgrade and usage notes](docs/RELEASE_NOTES_v0.8.3.md).
 
 [English](README.md) | [Türkçe](README.tr.md)
 
 ## Compose
 
-This 0.8.2 sample uses REST/platform 4.8.2 and the relevant cache or Dubbo 0.9.2 package. The Compose commands below are for local development. Release qualification runs on EmaTech; Windows and ARM execution checks are separate compatibility tests. A compiled platform artifact does not imply load-test qualification on that platform.
+This 0.8.3 sample uses REST/platform 4.9.0 and the relevant cache or Dubbo 0.9.2 package. The Compose commands below are for local development. Release qualification runs on EmaTech; Windows and ARM execution checks are separate compatibility tests. A compiled platform artifact does not imply load-test qualification on that platform.
 
 The shared topology is in sibling `rest-sample-cache-reader/docker/compose/`;
 see the [complete guide](https://github.com/esasmer-dou/rest-sample-cache-reader/blob/master/README.md#compose).
@@ -49,11 +49,11 @@ The idiomatic full provider keeps SQL/business contracts explicit; the narrower
 native profile is not an equivalent benchmark workload. This single-DB/Redis demo
 is not HA. Neither limits nor this recipe prove runtime RSS, throughput or p99.
 
-## Start With 0.8.2
+## Start With 0.8.3
 
 Separate native-provider and native DB-query profiles show bounded query/streaming paths. The normal provider profile remains available. Choose one build profile and keep consumer/model/interface versions aligned.
 
-[Usage guide](docs/functional-operations.md) · [Release notes](docs/RELEASE_NOTES_v0.8.2.md)
+[Usage guide](docs/functional-operations.md) · [Release notes](docs/RELEASE_NOTES_v0.8.3.md)
 
 
 New usage guide: [New usage examples](docs/functional-operations.md).
@@ -68,7 +68,7 @@ A plain Java Dubbo provider used by the Rust-Java REST consumer sample.
 - It can serve ready JSON or typed records.
 - The full profile uses PostgreSQL and HikariCP.
 
-Current versions: `rust-java-platform-parent:4.8.2`, `java-rust-dubbo:0.9.2`, `rest-sample-utility:0.5.2`, `rust-sample-model:0.5.2`.
+Current versions: `rust-java-platform-parent:4.9.0`, `java-rust-dubbo:0.9.2`, `rest-sample-utility:0.5.3`, `rust-sample-model:0.5.3`.
 
 ### Compact Segment Query
 
@@ -115,20 +115,20 @@ Read the plain-Java boundary in [Glowroot Agent Use](#glowroot-agent-use) before
 
 ## Current Checkout
 
-This update aligns the platform with REST `4.8.2` and optional agent `0.7.1`.
+This update aligns the platform with REST `4.9.0` and optional agent `0.7.1`.
 Use the native file packaged with the dependency you selected. Do not mix older SO/DLL files.
 Business code, URLs and configuration keys stay the same. Telemetry remains disabled by default.
 The HTTP micro memory gate does not guarantee the same overhead for a database job or a richer profile.
 
-Version `0.8.2` uses platform parent `4.8.2`. Rebuild the application with the aligned
-dependencies. See [release notes](docs/RELEASE_NOTES_v0.8.2.md). Runtime settings and URLs are unchanged.
+Version `0.8.3` uses platform parent `4.9.0`. Rebuild the application with the aligned
+dependencies. See [release notes](docs/RELEASE_NOTES_v0.8.3.md). Runtime settings and URLs are unchanged.
 
 - Full, catalog-only, and DB-query-only artifacts stay isolated Maven profiles.
 - Workspace Docker builds install the exact aligned REST and Dubbo artifacts before packaging.
 - The provider remains plain Java and keeps explicit service registration.
 - Provider interfaces, SQL behavior, HikariCP settings, and optional ZooKeeper registration are
   unchanged.
-- Build-time platform and ABI checks are aligned with REST `4.8.2`.
+- Build-time platform and ABI checks are aligned with REST `4.9.0`.
 
 ## Explicit Provider Flow
 
@@ -180,7 +180,7 @@ java `
   "-Ddubbo.provider.bind-host=127.0.0.1" `
   "-Ddubbo.provider.port=20880" `
   "-Dreactor.dubbo.registry-enabled=false" `
-  -jar target/rest-sample-dubbo-provider-0.8.2.jar
+  -jar target/rest-sample-dubbo-provider-0.8.3.jar
 ```
 
 Use it with the consumer's `native-static-consumer` profile.
@@ -213,7 +213,7 @@ java `
   "-Dsample.db.password=reactor" `
   "-Dsample.db.schema-init=true" `
   "-Dsample.db.warmup=true" `
-  -jar target/rest-sample-dubbo-provider-0.8.2.jar
+  -jar target/rest-sample-dubbo-provider-0.8.3.jar
 ```
 
 The provider listens on `127.0.0.1:20880`.
@@ -233,7 +233,7 @@ Use the new `native-db-query-provider` profile when this process only serves
 `CustomerQueryService`. It keeps PostgreSQL, Hikari and the Java business service.
 Generated codecs and Rust replace the official Dubbo/Netty transport. It does not
 export commands, catalog services or a ZooKeeper registration. The normal full
-provider remains unchanged. The profile is present in this `0.8.2` source checkout.
+provider remains unchanged. The profile is present in this `0.8.3` source checkout.
 Build the matching checkout and native library; this guide does not establish
 published package availability.
 
@@ -243,7 +243,7 @@ java `
   "-Dreactor.dubbo.native.path=C:/app/native/rust_dubbo-windows-x64.dll" `
   "-Dsample.db.jdbc-url=jdbc:postgresql://127.0.0.1:15432/reactor_sample" `
   "-Dsample.db.username=reactor" "-Dsample.db.password=reactor" `
-  -jar target/native-db-query-provider/rest-sample-dubbo-provider-0.8.2.jar
+  -jar target/native-db-query-provider/rest-sample-dubbo-provider-0.8.3.jar
 ```
 
 The database schema must exist. For Linux, use the matching ABI-3 `librust_dubbo.so`

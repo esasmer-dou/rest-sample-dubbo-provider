@@ -4,7 +4,7 @@
 
 Bu isteğe bağlı profiller, aynı Java katalog servisini resmî Dubbo motoru ve ortak
 native motorla karşılaştırır. Mevcut varsayılan provider değişmez. Bu profiller,
-bu `0.8.2` kaynak kodunda vardır; eşleşen modülleri ve native dosyaları birlikte
+bu `0.8.3` kaynak kodunda vardır; eşleşen modülleri ve native dosyaları birlikte
 derleyin. Bu rehber yayımlanmış paketin bulunabilirliğini doğrulamaz. Kaydedilmiş
 odak sıcak yük karşılaştırması, hedef platform dağıtımı ve bütün ürünün birleşik
 kabulünden ayrıdır.
@@ -52,7 +52,7 @@ kontrolü sağlar; tek CPU'da yarışan iki süreç izole yük testi değildir.
 java -Xms16m -Xmx48m -XX:ActiveProcessorCount=1 \
   -Dsample.provider.engine=official -Dreactor.dubbo.registry-enabled=false \
   -Ddubbo.provider.port=20880 \
-  -jar rest-sample-dubbo-provider/target/stream-catalog-provider/rest-sample-dubbo-provider-0.8.2.jar
+  -jar rest-sample-dubbo-provider/target/stream-catalog-provider/rest-sample-dubbo-provider-0.8.3.jar
 ```
 
 `NATIVE_LIB` değişkenini eski paketli dosya yerine güncel doğrulanmış SO'ya ayarlayın:
@@ -62,7 +62,7 @@ NATIVE_LIB=/opt/reactor/native/librust_dubbo.so
 java -Xms16m -Xmx48m -XX:ActiveProcessorCount=1 \
   -Dsample.provider.engine=native -Dreactor.dubbo.registry-enabled=false \
   -Ddubbo.provider.port=20881 "-Dreactor.dubbo.native.path=$NATIVE_LIB" \
-  -jar rest-sample-dubbo-provider/target/native-provider/rest-sample-dubbo-provider-0.8.2.jar
+  -jar rest-sample-dubbo-provider/target/native-provider/rest-sample-dubbo-provider-0.8.3.jar
 ```
 
 JVM seçenekleri container CPU/RSS sınırı koymaz. Native motor bütün ağ
